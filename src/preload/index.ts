@@ -99,6 +99,19 @@ ipcRenderer.on("event_from_main", (_, { type, payload }) => {
 });
 
 /**
+ * Listen for auth token from main process (deep link login)
+ * This receives the token sent via webview.send('auth_token', ...)
+ */
+ipcRenderer.on("auth_token", (_, { token }) => {
+  console.log("[Preload] 🔑 Received auth token from main process");
+  // Emit as a generic event that the webview can listen for
+  events.emit("auth_callback", { token });
+  
+  // Also send to the web content via postMessage for the chat.qwen.ai page to receive
+  window.postMessage({ type: "AUTH_CALLBACK", token }, "*");
+});
+
+/**
  * Expose APIs to renderer
  */
 console.log("[Preload] 🔍 Preload script executing...");

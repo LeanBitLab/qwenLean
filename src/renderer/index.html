@@ -207,6 +207,19 @@
       document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     });
 
+    // Listen for auth token from main process (deep link login)
+    window.electronAPI.on_event('auth_token', (data) => {
+      console.log('[Renderer] Received auth_token event:', data);
+      if (data && data.token) {
+        // Forward the token to the webview
+        const webview = document.querySelector('webview');
+        if (webview) {
+          console.log('[Renderer] Sending auth token to webview');
+          webview.send('auth_token', { token: data.token });
+        }
+      }
+    });
+
     // Initialize
     createWebview().catch((error) => {
       console.error('[Renderer] Failed to create webview:', error);
