@@ -289,6 +289,30 @@ async function setupMenu(): Promise<void> {
 // Configure app flags BEFORE ready (GPU, sandbox, platform hints)
 configureApp();
 
+// Request single instance lock to prevent multiple app instances
+// This ensures qwen:// URLs are passed to the existing instance
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log("[App] Another instance is already running, exiting...");
+  app.exit(0);
+} else {
+  app.on("second-instance", (_event, commandLine) => {
+    // Someone tried to launch a second instance - focus our window and handle any deep links
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      
+      // Check for qwen:// URL in command line args
+      const qwenUrl = commandLine.find((arg) => arg.startsWith("qwen://"));
+      if (qwenUrl) {
+        console.log("[App] Received qwen:// URL in second-instance:", qwenUrl);
+        handleDeepLink(qwenUrl, mainWindow);
+      }
+    }
+  });
+}
+
 app.whenReady().then(async () => {
   logger.info('🚀 Starting Qwen Desktop for Linux', { platform: getPlatformName(), version: APP_VERSION });
 
@@ -300,21 +324,6 @@ app.whenReady().then(async () => {
     // Setup protocol handler (qwen:// deep links)
     setupProtocolHandler({
       onDeepLink: (url) => handleDeepLink(url, mainWindow),
-      onCreateWindow: () => {
-        if (mainWindow) {
-          if (mainWindow.isMinimized()) mainWindow.restore();
-          mainWindow.focus();
-        } else {
-          mainWindow = createWindow({
-            onMcpClientConnect: mcpClientConnect,
-            onOpenDevTool: (win) =>
-              win.webContents.openDevTools({ mode: "right" }),
-            setQuitting,
-            isQuitting,
-            onDeepLink: (url) => handleDeepLink(url, mainWindow),
-          });
-        }
-      },
     });
 
     // Register IPC handlers (app management, MCP, theme, dialogs)

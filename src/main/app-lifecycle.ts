@@ -128,7 +128,25 @@ function registerAppImageProtocolHandler(): void {
     if (tryRegister() || attempts >= 5) {
       clearInterval(interval);
       if (attempts >= 5) {
-        console.log("[Protocol] Giving up after 5 attempts");
+        console.log("[Protocol] Automatic registration failed. Manual steps required:");
+        console.log("1. Find your .desktop file in ~/.local/share/applications/");
+        console.log("2. Add 'MimeType=x-scheme-handler/qwen;' to the [Desktop Entry] section");
+        console.log("3. Run: xdg-mime default <filename>.desktop x-scheme-handler/qwen");
+        console.log("4. Run: update-desktop-database ~/.local/share/applications");
+        
+        // Show dialog to user with instructions
+        setTimeout(() => {
+          dialog.showMessageBox({
+            type: "warning",
+            title: "Protocol Handler Registration",
+            message: "Qwen Desktop couldn't automatically register as the default handler for qwen:// links.",
+            detail: "To enable login via browser, please run these commands in terminal:\n\n" +
+              "1. Find your desktop file:\n   ls ~/.local/share/applications/ | grep qwen\n\n" +
+              "2. Register the protocol (replace <filename> with actual name):\n   xdg-mime default <filename>.desktop x-scheme-handler/qwen\n\n" +
+              "3. Update desktop database:\n   update-desktop-database ~/.local/share/applications",
+            buttons: ["OK"],
+          });
+        }, 1000);
       }
     }
   }, 2000);
@@ -184,11 +202,10 @@ export function handleDeepLink(
 }
 
 /**
- * Setup protocol handler (qwen://) and second-instance handler (Linux).
+ * Setup protocol handler (qwen://).
  */
 export function setupProtocolHandler(handlers: {
   onDeepLink: (url: string) => void;
-  onCreateWindow: () => void;
 }): void {
   // FIRST: Register .desktop file and MIME handler for AppImage
   registerAppImageProtocolHandler();
@@ -208,14 +225,6 @@ export function setupProtocolHandler(handlers: {
   app.on("open-url", (event, url) => {
     event.preventDefault();
     handlers.onDeepLink(url);
-  });
-
-  // Handle second instance (Linux)
-  app.on("second-instance", (_event, commandLine) => {
-    handlers.onCreateWindow();
-
-    const url = commandLine.find((arg) => arg.startsWith("qwen://"));
-    if (url) handlers.onDeepLink(url);
   });
 
   // Also check for qwen:// in initial command line args (first launch)
