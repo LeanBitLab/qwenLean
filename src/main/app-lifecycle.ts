@@ -202,6 +202,22 @@ export function handleDeepLink(
 }
 
 /**
+ * Parse qwen:// URL and extract token.
+ * Used by IPC handler for in-app browser windows.
+ */
+export function parseDeepLinkToken(url: string): string | null {
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.pathname === "/open") {
+      return urlObj.searchParams.get("token");
+    }
+  } catch (e) {
+    console.error("[DeepLink] Failed to parse URL:", e);
+  }
+  return null;
+}
+
+/**
  * Setup protocol handler (qwen://).
  */
 export function setupProtocolHandler(handlers: {

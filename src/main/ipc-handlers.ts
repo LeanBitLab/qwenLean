@@ -91,6 +91,41 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
 
       externalWindow.loadURL(url);
 
+      // Catch qwen:// redirects
+      externalWindow.webContents.on("will-navigate", (event, navUrl) => {
+        if (navUrl.startsWith("qwen://")) {
+          event.preventDefault();
+          console.log("[IPC] External window caught qwen:// redirect:", navUrl);
+          // Parse token from URL and forward to renderer
+          const { parseDeepLinkToken } = await import("./app-lifecycle.js");
+          const token = parseDeepLinkToken(navUrl);
+          if (token) {
+            win.webContents.send("event_from_main", {
+              type: "auth_token",
+              payload: { token },
+            });
+          }
+          externalWindow.close();
+        }
+      });
+
+      // Catch will-redirect for 302 redirects to qwen://
+      externalWindow.webContents.on("will-redirect", (event, navUrl) => {
+        if (navUrl.startsWith("qwen://")) {
+          event.preventDefault();
+          console.log("[IPC] External window caught qwen:// redirect (302):", navUrl);
+          const { parseDeepLinkToken } = await import("./app-lifecycle.js");
+          const token = parseDeepLinkToken(navUrl);
+          if (token) {
+            win.webContents.send("event_from_main", {
+              type: "auth_token",
+              payload: { token },
+            });
+          }
+          externalWindow.close();
+        }
+      });
+
       // Auto-close if it navigates back to chat.qwen.ai
       externalWindow.webContents.on("did-navigate", (event, navUrl) => {
         if (navUrl.includes("chat.qwen.ai")) {
