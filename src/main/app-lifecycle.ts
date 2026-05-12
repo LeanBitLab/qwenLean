@@ -16,8 +16,11 @@ import { app, BrowserWindow, dialog } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { execSync } from "child_process";
+import { execSync, exec } from "child_process";
+import { promisify } from "util";
 import * as http from "http";
+
+const execAsync = promisify(exec);
 
 // Local HTTP server for OAuth callback fallback (unused, kept for future)
 let authCallbackServer: http.Server | null = null;
@@ -42,7 +45,7 @@ export function setQuitting(value: boolean): void {
  * AppImage creates its .desktop file dynamically on mount, so we
  * retry registration after a delay to ensure the file exists.
  */
-function registerAppImageProtocolHandler(): void {
+async function registerAppImageProtocolHandler(): Promise<void> {
   if (process.platform !== "linux") return;
   if (!app.isPackaged) {
     console.log("[Protocol] Skipping registration in dev mode");
@@ -52,9 +55,9 @@ function registerAppImageProtocolHandler(): void {
   const desktopDir = path.join(os.homedir(), ".local", "share", "applications");
   console.log("[Protocol] Starting registration...");
 
-  function tryRegister(): boolean {
+  async function tryRegister(): Promise<boolean> {
     try {
-      const files = fs.readdirSync(desktopDir);
+      const files = await fs.promises.readdir(desktopDir);
       console.log(
         "[Protocol] Found desktop files:",
         files.filter((f) => f.toLowerCase().includes("qwen")),
@@ -74,7 +77,7 @@ function registerAppImageProtocolHandler(): void {
       const desktopFile = path.join(desktopDir, appimageDesktop);
       console.log("[Protocol] Found:", desktopFile);
 
-      let content = fs.readFileSync(desktopFile, "utf-8");
+      let content = await fs.promises.readFile(desktopFile, "utf-8");
       console.log(
         "[Protocol] Current MimeType:",
         content.match(/MimeType=.*/)?.[0] || "none",
@@ -94,22 +97,17 @@ function registerAppImageProtocolHandler(): void {
         content += "\nMimeType=x-scheme-handler/qwen;\n";
       }
 
-      fs.writeFileSync(desktopFile, content);
+      await fs.promises.writeFile(desktopFile, content);
       console.log("[Protocol] Patched:", desktopFile);
 
-      execSync(`xdg-mime default ${appimageDesktop} x-scheme-handler/qwen`, {
-        stdio: "pipe",
-      });
+      await execAsync(`xdg-mime default ${appimageDesktop} x-scheme-handler/qwen`);
       console.log("[Protocol] xdg-mime registered");
 
-      execSync(`update-desktop-database ${desktopDir}`, { stdio: "pipe" });
+      await execAsync(`update-desktop-database ${desktopDir}`);
       console.log("[Protocol] Desktop database updated");
 
-      const handler = execSync(`xdg-mime query default x-scheme-handler/qwen`, {
-        stdio: "pipe",
-      })
-        .toString()
-        .trim();
+      const { stdout } = await execAsync(`xdg-mime query default x-scheme-handler/qwen`);
+      const handler = stdout.trim();
       console.log("[Protocol] Verified handler:", handler);
       return true;
     } catch (error) {
@@ -119,37 +117,54 @@ function registerAppImageProtocolHandler(): void {
   }
 
   // Try immediately, then retry every 2 seconds for 10 seconds
-  if (tryRegister()) return;
+  if (await tryRegister()) return;
 
   let attempts = 0;
-  const interval = setInterval(() => {
+  const runRetry = async () => {
     attempts++;
     console.log(`[Protocol] Retry attempt ${attempts}/5...`);
-    if (tryRegister() || attempts >= 5) {
-      clearInterval(interval);
-      if (attempts >= 5) {
-        console.log("[Protocol] Automatic registration failed. Manual steps required:");
-        console.log("1. Find your .desktop file in ~/.local/share/applications/");
-        console.log("2. Add 'MimeType=x-scheme-handler/qwen;' to the [Desktop Entry] section");
-        console.log("3. Run: xdg-mime default <filename>.desktop x-scheme-handler/qwen");
-        console.log("4. Run: update-desktop-database ~/.local/share/applications");
-        
-        // Show dialog to user with instructions
-        setTimeout(() => {
-          dialog.showMessageBox({
-            type: "warning",
-            title: "Protocol Handler Registration",
-            message: "Qwen Desktop couldn't automatically register as the default handler for qwen:// links.",
-            detail: "To enable login via browser, please run these commands in terminal:\n\n" +
-              "1. Find your desktop file:\n   ls ~/.local/share/applications/ | grep qwen\n\n" +
-              "2. Register the protocol (replace <filename> with actual name):\n   xdg-mime default <filename>.desktop x-scheme-handler/qwen\n\n" +
-              "3. Update desktop database:\n   update-desktop-database ~/.local/share/applications",
-            buttons: ["OK"],
-          });
-        }, 1000);
-      }
+
+    // Wait 2 seconds
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    if (await tryRegister()) {
+      return;
     }
-  }, 2000);
+
+    if (attempts < 5) {
+      await runRetry();
+    } else {
+      console.log(
+        "[Protocol] Automatic registration failed. Manual steps required:",
+      );
+      console.log("1. Find your .desktop file in ~/.local/share/applications/");
+      console.log(
+        "2. Add 'MimeType=x-scheme-handler/qwen;' to the [Desktop Entry] section",
+      );
+      console.log(
+        "3. Run: xdg-mime default <filename>.desktop x-scheme-handler/qwen",
+      );
+      console.log("4. Run: update-desktop-database ~/.local/share/applications");
+
+      // Show dialog to user with instructions
+      setTimeout(() => {
+        dialog.showMessageBox({
+          type: "warning",
+          title: "Protocol Handler Registration",
+          message:
+            "Qwen Desktop couldn't automatically register as the default handler for qwen:// links.",
+          detail:
+            "To enable login via browser, please run these commands in terminal:\n\n" +
+            "1. Find your desktop file:\n   ls ~/.local/share/applications/ | grep qwen\n\n" +
+            "2. Register the protocol (replace <filename> with actual name):\n   xdg-mime default <filename>.desktop x-scheme-handler/qwen\n\n" +
+            "3. Update desktop database:\n   update-desktop-database ~/.local/share/applications",
+          buttons: ["OK"],
+        });
+      }, 1000);
+    }
+  };
+
+  runRetry();
 }
 
 /**
@@ -208,7 +223,9 @@ export function setupProtocolHandler(handlers: {
   onDeepLink: (url: string) => void;
 }): void {
   // FIRST: Register .desktop file and MIME handler for AppImage
-  registerAppImageProtocolHandler();
+  registerAppImageProtocolHandler().catch((err) => {
+    console.error("[Protocol] registerAppImageProtocolHandler failed:", err);
+  });
 
   // THEN: Set as default protocol client (uses the .desktop file)
   if (process.defaultApp) {
