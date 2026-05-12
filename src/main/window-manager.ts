@@ -161,7 +161,60 @@ export function createWindow(deps: WindowManagerDeps): BrowserWindow {
       deps.onDeepLink(details.url);
       return { action: "deny" };
     }
-    // Allow external links to open in system browser
+    
+    // For OAuth/auth URLs, open in a small in-app window to capture redirects
+    if (details.url.includes("login") || details.url.includes("auth") || details.url.includes("oauth")) {
+      console.log("[Window] Opening auth URL in-app:", details.url);
+      const authWindow = new BrowserWindow({
+        width: 600,
+        height: 700,
+        title: "Qwen Login",
+        parent: mainWindow,
+        modal: false,
+        webPreferences: {
+          partition: "persist:auth-session",
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+
+      authWindow.loadURL(details.url);
+
+      // Catch qwen:// redirects in the auth window
+      authWindow.webContents.on("will-navigate", (event, url) => {
+        if (url.startsWith("qwen://")) {
+          event.preventDefault();
+          console.log("[Window] Auth window caught qwen:// redirect:", url);
+          deps.onDeepLink(url);
+          authWindow.close();
+        }
+      });
+
+      // Also catch will-redirect for 302 redirects to qwen://
+      authWindow.webContents.on("will-redirect", (event, url) => {
+        if (url.startsWith("qwen://")) {
+          event.preventDefault();
+          console.log(
+            "[Window] Auth window caught qwen:// redirect (302):",
+            url,
+          );
+          deps.onDeepLink(url);
+          authWindow.close();
+        }
+      });
+
+      // Auto-close auth window if it navigates back to chat.qwen.ai (successful login)
+      authWindow.webContents.on("did-navigate", (event, url) => {
+        if (url.includes("chat.qwen.ai") && !url.includes("login") && !url.includes("auth")) {
+          console.log("[Window] Auth window navigated back to chat, closing...");
+          setTimeout(() => authWindow.close(), 500);
+        }
+      });
+
+      return { action: "deny" };
+    }
+    
+    // Allow other external links to open in system browser
     shell.openExternal(details.url);
     return { action: "deny" };
   });
@@ -223,70 +276,6 @@ export function createWindow(deps: WindowManagerDeps): BrowserWindow {
       event.preventDefault();
       mainWindow.hide();
     }
-  });
-
-  // Handle external links - intercept ALL links to keep auth flow in-app
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    // If it's a qwen:// deep link, handle it directly
-    if (details.url.startsWith("qwen://")) {
-      console.log(
-        "[Window] Caught qwen:// from setWindowOpenHandler:",
-        details.url,
-      );
-      deps.onDeepLink(details.url);
-      return { action: "deny" };
-    }
-
-    // ALWAYS open links in-app to capture auth redirects
-    // This prevents the browser from stealing the auth flow
-    console.log("[Window] Opening ALL URLs in-app to capture auth:", details.url);
-    const authWindow = new BrowserWindow({
-      width: 600,
-      height: 700,
-      title: "Qwen",
-      parent: mainWindow,
-      modal: false,
-      webPreferences: {
-        partition: "persist:auth-session",
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
-
-    authWindow.loadURL(details.url);
-
-    // Catch qwen:// redirects in the auth window
-    authWindow.webContents.on("will-navigate", (event, url) => {
-      if (url.startsWith("qwen://")) {
-        event.preventDefault();
-        console.log("[Window] Auth window caught qwen:// redirect:", url);
-        deps.onDeepLink(url);
-        authWindow.close();
-      }
-    });
-
-    // Also catch will-redirect for 302 redirects to qwen://
-    authWindow.webContents.on("will-redirect", (event, url) => {
-      if (url.startsWith("qwen://")) {
-        event.preventDefault();
-        console.log(
-          "[Window] Auth window caught qwen:// redirect (302):",
-          url,
-        );
-        deps.onDeepLink(url);
-        authWindow.close();
-      }
-    });
-
-    // Auto-close auth window if it navigates back to chat.qwen.ai (successful login)
-    authWindow.webContents.on("did-navigate", (event, url) => {
-      if (url.includes("chat.qwen.ai") && !url.includes("login") && !url.includes("auth")) {
-        console.log("[Window] Auth window navigated back to chat, closing...");
-        setTimeout(() => authWindow.close(), 500);
-      }
-    });
-
-    return { action: "deny" };
   });
 
   // DevTools shortcut
