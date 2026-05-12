@@ -149,6 +149,13 @@ export function createWindow(deps: WindowManagerDeps): BrowserWindow {
       console.log("[Window] Caught qwen:// redirect from webview:", url);
       deps.onDeepLink(url);
     }
+    // Also intercept auth/login URLs to prevent external browser opening
+    else if (url.includes("login") || url.includes("auth") || url.includes("oauth")) {
+      console.log("[Window] Intercepting auth URL navigation:", url);
+      event.preventDefault();
+      // Open auth URL in the main window itself (it's already loading)
+      mainWindow.loadURL(url);
+    }
   });
 
   // Catch window.open with qwen:// (OAuth popups sometimes use this)
