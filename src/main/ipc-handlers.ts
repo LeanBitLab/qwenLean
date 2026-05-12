@@ -69,8 +69,39 @@ export function registerIpcHandlers(deps: IpcHandlerDeps): void {
   ipcMain.handle(
     "open_external_link",
     async (_event, url: string): Promise<void> => {
-      const { shell } = await import("electron");
-      await shell.openExternal(url);
+      const { BrowserWindow } = await import("electron");
+      const win = deps.getMainWindow();
+      if (!win) return;
+      
+      console.log("[IPC] Opening external URL in-app:", url);
+      
+      // Open in an in-app browser window to capture any redirects
+      const externalWindow = new BrowserWindow({
+        width: 800,
+        height: 600,
+        title: "Qwen",
+        parent: win,
+        modal: false,
+        webPreferences: {
+          partition: "persist:external-session",
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+
+      externalWindow.loadURL(url);
+
+      // Auto-close if it navigates back to chat.qwen.ai
+      externalWindow.webContents.on("did-navigate", (event, navUrl) => {
+        if (navUrl.includes("chat.qwen.ai")) {
+          console.log("[IPC] External window navigated back to chat, closing...");
+          setTimeout(() => externalWindow.close(), 500);
+        }
+      });
+
+      externalWindow.on("closed", () => {
+        console.log("[IPC] External window closed");
+      });
     },
   );
 
