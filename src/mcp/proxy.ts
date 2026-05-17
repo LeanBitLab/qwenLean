@@ -34,7 +34,26 @@ class McpProxy {
 
   constructor() {
     this.app = express();
-    this.app.use(cors());
+    this.app.use(cors({
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+
+        const allowedOrigins = [
+          "https://chat.qwen.ai"
+        ];
+
+        if (
+          allowedOrigins.includes(origin) ||
+          origin.startsWith('http://localhost:') ||
+          origin.startsWith('http://127.0.0.1:') ||
+          origin.startsWith('qwen://')
+        ) {
+          return callback(null, true);
+        }
+
+        return callback(new Error('Not allowed by CORS'), false);
+      }
+    }));
     this.app.use(express.json());
 
     // HTTP endpoints for proxy access (same as official app)
