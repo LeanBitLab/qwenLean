@@ -34,7 +34,7 @@ class McpProxy {
 
   constructor() {
     this.app = express();
-    this.app.use(cors());
+    this.app.use(cors({ origin: ["https://chat.qwen.ai"] }));
     this.app.use(express.json());
 
     // HTTP endpoints for proxy access (same as official app)
