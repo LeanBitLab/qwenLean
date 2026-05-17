@@ -16,7 +16,7 @@ import { app, BrowserWindow, dialog } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as http from "http";
 
 // Local HTTP server for OAuth callback fallback (unused, kept for future)
@@ -97,15 +97,15 @@ function registerAppImageProtocolHandler(): void {
       fs.writeFileSync(desktopFile, content);
       console.log("[Protocol] Patched:", desktopFile);
 
-      execSync(`xdg-mime default ${appimageDesktop} x-scheme-handler/qwen`, {
+      execFileSync("xdg-mime", ["default", appimageDesktop, "x-scheme-handler/qwen"], {
         stdio: "pipe",
       });
       console.log("[Protocol] xdg-mime registered");
 
-      execSync(`update-desktop-database ${desktopDir}`, { stdio: "pipe" });
+      execFileSync("update-desktop-database", [desktopDir], { stdio: "pipe" });
       console.log("[Protocol] Desktop database updated");
 
-      const handler = execSync(`xdg-mime query default x-scheme-handler/qwen`, {
+      const handler = execFileSync("xdg-mime", ["query", "default", "x-scheme-handler/qwen"], {
         stdio: "pipe",
       })
         .toString()
