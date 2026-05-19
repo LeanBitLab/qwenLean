@@ -1,0 +1,56 @@
+{
+  "name": "qwen-studio",
+  "version": "2.2.0",
+  "description": "Open-source Qwen AI desktop client with MCP support. Cross-platform (Linux, Windows, macOS).",
+  "author": "youssefvdel <youssefvdel@gmail.com>",
+  "homepage": "https://chat.qwen.ai/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/youssefvdel/qwen-studio.git"
+  },
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri dev",
+    "tauri:build": "WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri build",
+    "tauri:build:rpm": "WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri build --bundles rpm",
+    "tauri:build:deb": "WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri build --bundles deb",
+    "tauri:build:appimage": "WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri build --bundles appimage"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^22.13.0",
+    "@types/uuid": "^10.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.1.0",
+    "node-fetch": "^2.7.0",
+    "qwen-core": "^2.1.1",
+    "uuid": "^13.0.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.1",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1"
+  },
+  "keywords": [
+    "qwen",
+    "qwen-ai",
+    "qwen-studio",
+    "linux",
+    "ubuntu",
+    "fedora",
+    "arch",
+    "windows",
+    "macos",
+    "tauri",
+    "mcp",
+    "model-context-protocol",
+    "ai-chat",
+    "desktop-app",
+    "appimage",
+    "deb",
+    "rpm",
+    "alibaba-cloud"
+  ],
+  "license": "MIT"
+}
