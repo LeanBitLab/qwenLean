@@ -1,9 +1,9 @@
+mod dialogs;
+mod events;
 mod mcp;
 mod settings;
-mod window;
-mod events;
-mod dialogs;
 mod tray;
+mod window;
 
 use tauri::Manager;
 
@@ -64,7 +64,7 @@ pub fn run() {
                             name: "qwen-core",
                             description: "Core MCP server with 28 tools for file operations, search, bash execution, time management, and autonomous agent capabilities. Provides filesystem access, git operations, and sequential thinking for AI-assisted development.",
                             type: "stdio",
-                            params: { command: "npx", args: ["-y", "qwen-core"] },
+                            params: { command: "npx", args: ["-y", "@youssefvdel/qwen-core"] },
                             enabled: true,
                             default: false,
                             connectionStatus: "available",
@@ -88,7 +88,7 @@ pub fn run() {
                         tab.id = 'qwen-updates-tab';
                         tab.className = 'setting-side-bar-group-content-item';
                         tab.setAttribute('data-spm-anchor-id', '');
-                        tab.innerHTML = '<span role="img" class="anticon"><svg width="1em" height="1em" fill="currentColor" aria-hidden="true" focusable="false" class=""><use xlink:href="#icon-line-information-circle"></use></svg></span><div class="setting-side-bar-group-content-item-title" data-spm-anchor-id="">Updates</div>';
+                        tab.innerHTML = '<span role="img" class="anticon"><svg width="1em" height="1em" fill="currentColor" aria-hidden="true" focusable="false" class=""><use xlink:href="#icon-line-download-02"></use></svg></span><div class="setting-side-bar-group-content-item-title" data-spm-anchor-id="">Updates</div>';
                         sidebarContent.appendChild(tab);
 
                         var panel = document.createElement('div');
@@ -129,15 +129,15 @@ pub fn run() {
                         try {
                             var info = await window.__TAURI__.core.invoke('get_update_info');
                             if (info.available) {
-                                content.innerHTML = '<div style="background:#1a1a2e;border:1px solid #2d2d44;border-radius:12px;padding:24px;">' +
+                                content.innerHTML = '<div style="background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:24px;">' +
                                     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
-                                    '<span style="font-size:32px;">&#x1f504;</span>' +
-                                    '<div><div style="font-size:18px;font-weight:600;">Update Available</div>' +
-                                    '<div style="color:#9ca3af;font-size:14px;">Version ' + info.latest_version + '</div></div></div>' +
-                                    '<div style="margin-bottom:16px;"><span style="color:#9ca3af;">Current:</span> <strong>' + info.current_version + '</strong></div>' +
-                                    '<div style="background:#16213e;padding:12px;border-radius:8px;margin-bottom:16px;font-size:13px;max-height:150px;overflow-y:auto;">' +
+                                    '<span style="font-size:32px;color:rgb(97,92,237);">&#x2b07;</span>' +
+                                    '<div><div style="font-size:18px;font-weight:600;color:rgb(247,248,252);">Update Available</div>' +
+                                    '<div style="color:rgba(255,255,255,0.5);font-size:14px;">Version ' + info.latest_version + '</div></div></div>' +
+                                    '<div style="margin-bottom:16px;"><span style="color:rgba(255,255,255,0.5);">Current:</span> <strong style="color:rgb(247,248,252);">' + info.current_version + '</strong></div>' +
+                                    '<div style="background:rgba(255,255,255,0.04);padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.7);max-height:150px;overflow-y:auto;">' +
                                     info.release_notes.replace(/\n/g, '<br>') + '</div>' +
-                                    '<button id="qwen-install-btn" style="width:100%;padding:12px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">Install Update</button></div>';
+                                    '<button id="qwen-install-btn" style="width:100%;padding:8px 16px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:6px;font-size:13px;cursor:pointer;height:32px;font-family:\"JetBrains Mono\",monospace;transition: background 0.15s ease;">Install Update</button></div>';
                                 document.getElementById('qwen-install-btn').onclick = async function() {
                                     var btn = document.getElementById('qwen-install-btn');
                                     btn.textContent = 'Installing...';
@@ -154,14 +154,14 @@ pub fn run() {
                                     }
                                 };
                             } else {
-                                content.innerHTML = '<div style="background:#1a1a2e;border:1px solid #2d2d44;border-radius:12px;padding:32px;text-align:center;">' +
-                                    '<div style="font-size:48px;margin-bottom:12px;">&#x2705;</div>' +
-                                    '<div style="font-size:18px;font-weight:600;margin-bottom:4px;">You\'re up to date!</div>' +
-                                    '<div style="color:#9ca3af;font-size:14px;">Version ' + info.current_version + '</div></div>';
+                                content.innerHTML = '<div style="background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:32px;text-align:center;">' +
+                                    '<div style="font-size:48px;margin-bottom:12px;color:rgb(34,197,94);">&#x2705;</div>' +
+                                    '<div style="font-size:18px;font-weight:600;color:rgb(247,248,252);margin-bottom:4px;">You\'re up to date!</div>' +
+                                    '<div style="color:rgba(255,255,255,0.5);font-size:14px;">Version ' + info.current_version + '</div></div>';
                             }
                         } catch(e) {
-                            content.innerHTML = '<div style="background:#1a1a2e;border:1px solid #2d2d44;border-radius:12px;padding:24px;">' +
-                                '<div style="color:#ef4444;font-size:14px;">Error checking for updates: ' + e + '</div></div>';
+                            content.innerHTML = '<div style="background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:24px;">' +
+                                '<div style="color:rgb(239,68,68);font-size:14px;">Error checking for updates: ' + e + '</div></div>';
                         }
                     }
 
@@ -476,34 +476,49 @@ async fn check_for_updates(app: &tauri::AppHandle, manual: bool) {
     match updater.check().await {
         Ok(Some(update)) => {
             log::info!("[Updater] Update available: {}", update.version);
-            let install_type = detect_install_type();
             let version = update.version.clone();
-            let notes = update.body.as_deref().unwrap_or("No release notes").replace('\n', "\\n").replace('"', "\\\"");
+            let notes = update
+                .body
+                .as_deref()
+                .unwrap_or("No release notes")
+                .replace('\n', "\\n")
+                .replace('"', "\\\"");
 
             if let Some(window) = app.get_webview_window("main") {
-                let msg = match install_type {
-                    InstallType::AppImage => format!(
-                        "Update {} is available (AppImage).\n\n{}\n\nDownload and install now?",
-                        version, notes
-                    ),
-                    InstallType::Deb => format!(
-                        "Update {} is available (.deb).\n\n{}\n\nDownload and install? (requires sudo)",
-                        version, notes
-                    ),
-                    InstallType::Rpm => format!(
-                        "Update {} is available (.rpm).\n\n{}\n\nDownload and install? (requires sudo)",
-                        version, notes
-                    ),
-                    InstallType::Unknown => format!(
-                        "Update {} is available.\n\n{}\n\nOpen GitHub releases page?",
-                        version, notes
-                    ),
-                };
-
                 let _ = window.eval(format!(
-                    r#"if(confirm("{}")) {{ window.__TAURI__.core.invoke('install_update', {{ type: '{}' }}); }}"#,
-                    msg.replace('\n', "\\n"),
-                    install_type.as_str()
+                    r#"(function() {{
+                        if (document.getElementById('qwen-update-banner')) return;
+                        var style = document.createElement('style');
+                        style.id = 'qwen-banner-styles';
+                        style.textContent = '#qwen-banner-install:hover {{ background: rgb(117, 112, 257) !important; }} #qwen-banner-install:active {{ background: rgb(87, 82, 227) !important; }} #qwen-banner-dismiss:hover {{ background: rgba(255,255,255,0.08) !important; color: rgb(247,248,252) !important; }}';
+                        document.head.appendChild(style);
+                        var banner = document.createElement('div');
+                        banner.id = 'qwen-update-banner';
+                        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:rgb(46,46,51);border-bottom:1px solid rgba(255,255,255,0.08);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-family:system-ui,ui-sans-serif,-apple-system,BlinkMacSystemFont,Inter,NotoSansHans,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+                        banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">' +
+                            '<span style="font-size:18px;color:rgb(97,92,237);flex-shrink:0;">&#x2b07;</span>' +
+                            '<div style="min-width:0;"><div style="font-size:14px;font-weight:500;color:rgb(247,248,252);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Update {} available</div>' +
+                            '<div style="font-size:12px;color:rgba(255,255,255,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{} </div></div></div>' +
+                            '<div style="display:flex;gap:8px;flex-shrink:0;">' +
+                            '<button id="qwen-banner-install" style="padding:6px 16px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:6px;font-size:13px;font-weight:400;cursor:pointer;height:28px;font-family:\"JetBrains Mono\",monospace;transition: background 0.15s ease;">View in Settings</button>' +
+                            '<button id="qwen-banner-dismiss" style="padding:6px 12px;background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:13px;cursor:pointer;height:28px;transition: background 0.15s ease, color 0.15s ease;">&#x2715;</button></div>';
+                        document.body.appendChild(banner);
+                        document.getElementById('qwen-banner-install').addEventListener('click', function() {{
+                            var btn = document.getElementById('qwen-banner-install');
+                            btn.textContent = 'Opening...';
+                            btn.disabled = true;
+                            btn.style.opacity = '0.7';
+                            btn.style.cursor = 'wait';
+                            window.location.href = 'https://chat.qwen.ai/settings';
+                        }});
+                        document.getElementById('qwen-banner-dismiss').addEventListener('click', function() {{
+                            var b = document.getElementById('qwen-update-banner');
+                            if (b) b.remove();
+                            var s = document.getElementById('qwen-banner-styles');
+                            if (s) s.remove();
+                        }});
+                    }})();"#,
+                    version, notes
                 ));
             }
         }
@@ -529,59 +544,16 @@ async fn check_for_updates(app: &tauri::AppHandle, manual: bool) {
     }
 }
 
-#[derive(Debug)]
-enum InstallType {
-    AppImage,
-    Deb,
-    Rpm,
-    Unknown,
-}
-
-impl InstallType {
-    fn as_str(&self) -> &'static str {
-        match self {
-            InstallType::AppImage => "appimage",
-            InstallType::Deb => "deb",
-            InstallType::Rpm => "rpm",
-            InstallType::Unknown => "unknown",
-        }
-    }
-}
-
-fn detect_install_type() -> InstallType {
-    if std::env::var("APPIMAGE").is_ok() {
-        return InstallType::AppImage;
-    }
-
-    let output = std::process::Command::new("dpkg")
-        .arg("-s")
-        .arg("qwen-studio")
-        .output();
-    if let Ok(o) = output {
-        if o.status.success() {
-            return InstallType::Deb;
-        }
-    }
-
-    let output = std::process::Command::new("rpm")
-        .arg("-q")
-        .arg("qwen-studio")
-        .output();
-    if let Ok(o) = output {
-        if o.status.success() {
-            return InstallType::Rpm;
-        }
-    }
-
-    InstallType::Unknown
-}
-
 #[tauri::command]
 async fn install_update(app: tauri::AppHandle, r#type: String) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
 
     let updater = app.updater().map_err(|e| e.to_string())?;
-    let update = updater.check().await.map_err(|e| e.to_string())?.ok_or("No update available")?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("No update available")?;
 
     match r#type.as_str() {
         "appimage" => {
@@ -601,7 +573,10 @@ async fn install_update(app: tauri::AppHandle, r#type: String) -> Result<(), Str
             let tmp_path = format!("/tmp/qwen-studio_{}.deb", update.version);
             let status = std::process::Command::new("sh")
                 .arg("-c")
-                .arg(format!("curl -L '{}' -o '{}' && pkexec dpkg -i '{}'", url, tmp_path, tmp_path))
+                .arg(format!(
+                    "curl -L '{}' -o '{}' && pkexec dpkg -i '{}'",
+                    url, tmp_path, tmp_path
+                ))
                 .status()
                 .map_err(|e| e.to_string())?;
             if !status.success() {
@@ -619,7 +594,10 @@ async fn install_update(app: tauri::AppHandle, r#type: String) -> Result<(), Str
             let tmp_path = format!("/tmp/qwen-studio-{}.x86_64.rpm", update.version);
             let status = std::process::Command::new("sh")
                 .arg("-c")
-                .arg(format!("curl -L '{}' -o '{}' && pkexec rpm -Uvh '{}'", url, tmp_path, tmp_path))
+                .arg(format!(
+                    "curl -L '{}' -o '{}' && pkexec rpm -Uvh '{}'",
+                    url, tmp_path, tmp_path
+                ))
                 .status()
                 .map_err(|e| e.to_string())?;
             if !status.success() {
@@ -657,7 +635,11 @@ async fn get_update_info(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
             current_version: current_version.clone(),
             available: true,
             latest_version: update.version.clone(),
-            release_notes: update.body.as_deref().unwrap_or("No release notes").to_string(),
+            release_notes: update
+                .body
+                .as_deref()
+                .unwrap_or("No release notes")
+                .to_string(),
         }),
         Ok(None) => Ok(UpdateInfo {
             current_version: current_version.clone(),
@@ -668,5 +650,3 @@ async fn get_update_info(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
         Err(e) => Err(e.to_string()),
     }
 }
-
-

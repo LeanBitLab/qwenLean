@@ -31,7 +31,11 @@ pub async fn show_native_dialog(
         .buttons(MessageDialogButtons::Ok)
         .blocking_show();
 
-    Ok(if result { "ok".to_string() } else { "cancel".to_string() })
+    Ok(if result {
+        "ok".to_string()
+    } else {
+        "cancel".to_string()
+    })
 }
 
 #[tauri::command]
@@ -48,10 +52,15 @@ pub async fn request_file_access(
         .file()
         .set_title(&purpose)
         .pick_file(move |file_handle| {
-            let _ = tx.send(file_handle.and_then(|f| f.as_path().map(|p| p.to_string_lossy().to_string())));
+            let _ = tx.send(
+                file_handle.and_then(|f| f.as_path().map(|p| p.to_string_lossy().to_string())),
+            );
         });
 
-    let file_path = rx.recv().map_err(|e| e.to_string())?.ok_or("No file selected")?;
+    let file_path = rx
+        .recv()
+        .map_err(|e| e.to_string())?
+        .ok_or("No file selected")?;
 
     let mut result = serde_json::json!({
         "filePath": file_path

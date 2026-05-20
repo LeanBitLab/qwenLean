@@ -39,3 +39,8 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { version = "0.18", package = "gtk" }
 glib = "0.18"
+
+[profile.release]
+strip = "symbols"
+lto = true
+codegen-units = 1

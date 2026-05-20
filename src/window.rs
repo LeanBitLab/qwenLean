@@ -79,7 +79,10 @@ pub async fn close_window(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn open_external_link(app: tauri::AppHandle, url: String) -> Result<bool, String> {
     if url.starts_with("qwen://") {
-        log::info!("[DeepLink] Caught qwen:// URL in open_external_link: {}", url);
+        log::info!(
+            "[DeepLink] Caught qwen:// URL in open_external_link: {}",
+            url
+        );
         handle_deep_link_url(&app, &url).await;
         return Ok(true);
     }
@@ -96,10 +99,13 @@ pub async fn open_external_link(app: tauri::AppHandle, url: String) -> Result<bo
 #[tauri::command]
 pub async fn switch_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
     log::info!("[Theme] switch_theme: {}", theme);
-    app.emit("event_from_main", serde_json::json!({
-        "type": "theme_changed",
-        "payload": theme
-    }))
+    app.emit(
+        "event_from_main",
+        serde_json::json!({
+            "type": "theme_changed",
+            "payload": theme
+        }),
+    )
     .map_err(|e| e.to_string())?;
 
     #[cfg(target_os = "windows")]
@@ -122,10 +128,13 @@ pub async fn switch_theme(app: tauri::AppHandle, theme: String) -> Result<(), St
 #[tauri::command]
 pub async fn switch_ln(app: tauri::AppHandle, ln: String) -> Result<(), String> {
     log::info!("[Language] switch_ln: {}", ln);
-    app.emit("event_from_main", serde_json::json!({
-        "type": "language_changed",
-        "payload": ln
-    }))
+    app.emit(
+        "event_from_main",
+        serde_json::json!({
+            "type": "language_changed",
+            "payload": ln
+        }),
+    )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -135,10 +144,13 @@ pub async fn update_title_bar_for_system_theme(
     app: tauri::AppHandle,
     is_dark: bool,
 ) -> Result<(), String> {
-    app.emit("event_from_main", serde_json::json!({
-        "type": "system_theme_changed",
-        "payload": is_dark
-    }))
+    app.emit(
+        "event_from_main",
+        serde_json::json!({
+            "type": "system_theme_changed",
+            "payload": is_dark
+        }),
+    )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -181,7 +193,8 @@ pub async fn handle_deep_link_url(app: &tauri::AppHandle, url: &str) {
 
             match host {
                 "open" | "auth" | "login" | "callback" => {
-                    let token = query.get("token")
+                    let token = query
+                        .get("token")
                         .or_else(|| query.get("code"))
                         .or_else(|| query.get("sid"))
                         .or_else(|| query.get("ticket"));
@@ -194,12 +207,14 @@ pub async fn handle_deep_link_url(app: &tauri::AppHandle, url: &str) {
                             let _ = window.show();
                             let _ = window.set_focus();
 
-                            let current_url = window.url().map(|u| u.to_string()).unwrap_or_default();
+                            let current_url =
+                                window.url().map(|u| u.to_string()).unwrap_or_default();
                             log::info!("[DeepLink] Current webview URL: {}", current_url);
 
                             if !current_url.contains("chat.qwen.ai") {
                                 log::info!("[DeepLink] Navigating to chat.qwen.ai first");
-                                let _ = window.eval("window.location.href = 'https://chat.qwen.ai';");
+                                let _ =
+                                    window.eval("window.location.href = 'https://chat.qwen.ai';");
                                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                             }
 
@@ -227,7 +242,10 @@ pub async fn handle_deep_link_url(app: &tauri::AppHandle, url: &str) {
                             let _ = window.eval("window.location.reload();");
                         }
                     } else {
-                        log::warn!("[DeepLink] No token/code/sid/ticket in URL. Query params: {:?}", query.keys().collect::<Vec<_>>());
+                        log::warn!(
+                            "[DeepLink] No token/code/sid/ticket in URL. Query params: {:?}",
+                            query.keys().collect::<Vec<_>>()
+                        );
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();

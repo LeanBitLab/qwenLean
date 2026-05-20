@@ -22,30 +22,31 @@ pub async fn webview_loaded(app: tauri::AppHandle, id: String) -> Result<(), Str
     let mut pending = state.lock().unwrap();
 
     for event in pending.events.drain(..) {
-        app.emit("event_from_main", &event).map_err(|e| e.to_string())?;
+        app.emit("event_from_main", &event)
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())
 }
 
 pub fn setup_event_forwarding(app: &tauri::AppHandle) {
-    app.manage(Mutex::new(PendingEvents {
-        events: Vec::new(),
-    }));
+    app.manage(Mutex::new(PendingEvents { events: Vec::new() }));
 
     let app_handle = app.clone();
-    app_handle.clone().listen_any("event_to_main", move |event| {
-        if let Ok(payload) = serde_json::from_str::<AppEvent>(event.payload()) {
-            log::info!("[Event] event_to_main: {}", payload.event_type);
+    app_handle
+        .clone()
+        .listen_any("event_to_main", move |event| {
+            if let Ok(payload) = serde_json::from_str::<AppEvent>(event.payload()) {
+                log::info!("[Event] event_to_main: {}", payload.event_type);
 
-            let state = app_handle.state::<Mutex<PendingEvents>>();
-            let pending = state.lock().unwrap();
+                let state = app_handle.state::<Mutex<PendingEvents>>();
+                let pending = state.lock().unwrap();
 
-            if pending.events.is_empty() {
-                if let Err(e) = app_handle.emit("event_from_main", &payload) {
-                    log::error!("[Event] Failed to emit event: {}", e);
+                if pending.events.is_empty() {
+                    if let Err(e) = app_handle.emit("event_from_main", &payload) {
+                        log::error!("[Event] Failed to emit event: {}", e);
+                    }
                 }
             }
-        }
-    });
+        });
 }
