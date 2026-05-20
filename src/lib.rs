@@ -78,23 +78,45 @@ pub fn run() {
             // Inject settings updates tab
             let settings_script = r##"
                 (function() {
+                    var injected = false;
+
                     function injectUpdatesTab() {
-                        if (document.getElementById('qwen-updates-tab')) return;
+                        if (injected) return;
 
                         var sidebarContent = document.querySelector('.setting-side-bar-group-content');
                         if (!sidebarContent) return;
+
+                        var aboutTab = null;
+                        var items = sidebarContent.querySelectorAll('.setting-side-bar-group-content-item');
+                        for (var i = 0; i < items.length; i++) {
+                            var title = items[i].querySelector('.setting-side-bar-group-content-item-title');
+                            if (title && title.textContent.trim() === 'About') {
+                                aboutTab = items[i];
+                                break;
+                            }
+                        }
 
                         var tab = document.createElement('div');
                         tab.id = 'qwen-updates-tab';
                         tab.className = 'setting-side-bar-group-content-item';
                         tab.setAttribute('data-spm-anchor-id', '');
                         tab.innerHTML = '<span role="img" class="anticon"><svg width="1em" height="1em" fill="currentColor" aria-hidden="true" focusable="false" class=""><use xlink:href="#icon-line-download-02"></use></svg></span><div class="setting-side-bar-group-content-item-title" data-spm-anchor-id="">Updates</div>';
-                        sidebarContent.appendChild(tab);
+
+                        if (aboutTab) {
+                            sidebarContent.insertBefore(tab, aboutTab);
+                        } else {
+                            sidebarContent.appendChild(tab);
+                        }
 
                         var panel = document.createElement('div');
                         panel.id = 'qwen-updates-panel';
-                        panel.style.cssText = 'display:none;flex:1;padding:32px;overflow-y:auto;background:#0f0f14;color:#e5e7eb;font-family:system-ui,sans-serif;';
-                        panel.innerHTML = '<div style="max-width:500px;"><h2 style="margin:0 0 24px;font-size:24px;font-weight:600;">Updates</h2><div id="qwen-update-content"><p style="color:#9ca3af;">Checking for updates...</p></div></div>';
+                        panel.className = 'qwen-chat-setting-general';
+                        panel.style.display = 'none';
+                        panel.innerHTML =
+                            '<div class="setting-content-title">' +
+                                '<div class="setting-content-title-title">Updates</div>' +
+                            '</div>' +
+                            '<div id="qwen-update-content" style="max-width:500px;"></div>';
 
                         var mainContent = document.querySelector('.setting-content');
                         if (mainContent) {
@@ -119,70 +141,190 @@ pub fn run() {
                             panel.style.display = 'block';
                             checkForUpdatesUI();
                         };
+
+                        var observer = new MutationObserver(function(mutations) {
+                            for (var i = 0; i < mutations.length; i++) {
+                                var m = mutations[i];
+                                if (m.attributeName === 'class' && m.target !== tab) {
+                                    if (m.target.classList.contains('selected')) {
+                                        tab.classList.remove('selected');
+                                        panel.style.display = 'none';
+                                    }
+                                }
+                            }
+                        });
+
+                        sidebarContent.querySelectorAll('.setting-side-bar-group-content-item').forEach(function(t) {
+                            observer.observe(t, { attributes: true, attributeFilter: ['class'] });
+                        });
+
+                        injected = true;
+                    }
+
+                    function cardStyle() {
+                        return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;margin-bottom:16px;';
+                    }
+
+                    function progressBarStyle() {
+                        return 'width:100%;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;margin:12px 0;';
+                    }
+
+                    function progressFillStyle(pct) {
+                        return 'height:100%;width:' + pct + '%;background:rgb(97,92,237);border-radius:2px;transition:width 0.3s ease;';
+                    }
+
+                    function btnStyle() {
+                        return 'padding:8px 20px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:36px;font-family:inherit;transition:background 0.15s ease;';
+                    }
+
+                    function btnSecondaryStyle() {
+                        return 'padding:8px 20px;background:transparent;color:rgb(247,248,252);border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:36px;font-family:inherit;transition:background 0.15s ease;';
                     }
 
                     async function checkForUpdatesUI() {
                         var content = document.getElementById('qwen-update-content');
                         if (!content) return;
-                        content.innerHTML = '<p style="color:#9ca3af;">Checking for updates...</p>';
+                        content.innerHTML =
+                            '<div style="' + cardStyle() + '">' +
+                                '<div class="qwen-chat-setting-content-item-label">Checking for updates...</div>' +
+                            '</div>';
 
                         try {
                             var info = await window.__TAURI__.core.invoke('get_update_info');
                             if (info.available) {
-                                content.innerHTML = '<div style="background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:24px;">' +
-                                    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
-                                    '<span style="font-size:32px;color:rgb(97,92,237);">&#x2b07;</span>' +
-                                    '<div><div style="font-size:18px;font-weight:600;color:rgb(247,248,252);">Update Available</div>' +
-                                    '<div style="color:rgba(255,255,255,0.5);font-size:14px;">Version ' + info.latest_version + '</div></div></div>' +
-                                    '<div style="margin-bottom:16px;"><span style="color:rgba(255,255,255,0.5);">Current:</span> <strong style="color:rgb(247,248,252);">' + info.current_version + '</strong></div>' +
-                                    '<div style="background:rgba(255,255,255,0.04);padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.7);max-height:150px;overflow-y:auto;">' +
-                                    info.release_notes.replace(/\n/g, '<br>') + '</div>' +
-                                    '<button id="qwen-install-btn" style="width:100%;padding:8px 16px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:6px;font-size:13px;cursor:pointer;height:32px;font-family:\"JetBrains Mono\",monospace;transition: background 0.15s ease;">Install Update</button></div>';
+                                content.innerHTML =
+                                    '<div style="' + cardStyle() + '">' +
+                                        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
+                                            '<span style="font-size:20px;">&#x2b07;</span>' +
+                                            '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;">Update Available</div>' +
+                                        '</div>' +
+                                        '<div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:16px;">v' + info.latest_version + ' &mdash; you are on v' + info.current_version + '</div>' +
+                                        (info.release_notes ? '<div style="background:rgba(255,255,255,0.04);padding:12px;border-radius:8px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.6);max-height:120px;overflow-y:auto;line-height:1.5;">' + info.release_notes.replace(/\n/g, '<br>') + '</div>' : '') +
+                                        '<div style="display:flex;gap:8px;">' +
+                                            '<button id="qwen-install-btn" style="' + btnStyle() + '">Download &amp; Install</button>' +
+                                        '</div>' +
+                                    '</div>';
                                 document.getElementById('qwen-install-btn').onclick = async function() {
-                                    var btn = document.getElementById('qwen-install-btn');
-                                    btn.textContent = 'Installing...';
-                                    btn.disabled = true;
-                                    btn.style.opacity = '0.7';
-                                    try {
-                                        await window.__TAURI__.core.invoke('install_update', { type: 'appimage' });
-                                        btn.textContent = 'Installed! Restarting...';
-                                        btn.style.background = '#3b82f6';
-                                    } catch(e) {
-                                        btn.textContent = 'Failed: ' + e;
-                                        btn.style.background = '#ef4444';
-                                        btn.style.opacity = '1';
-                                    }
+                                    startInstallUI();
                                 };
                             } else {
-                                content.innerHTML = '<div style="background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:32px;text-align:center;">' +
-                                    '<div style="font-size:48px;margin-bottom:12px;color:rgb(34,197,94);">&#x2705;</div>' +
-                                    '<div style="font-size:18px;font-weight:600;color:rgb(247,248,252);margin-bottom:4px;">You\'re up to date!</div>' +
-                                    '<div style="color:rgba(255,255,255,0.5);font-size:14px;">Version ' + info.current_version + '</div></div>';
+                                content.innerHTML =
+                                    '<div style="' + cardStyle() + 'text-align:center;">' +
+                                        '<div style="font-size:32px;margin-bottom:8px;">&#x2705;</div>' +
+                                        '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;margin-bottom:4px;">You\'re up to date</div>' +
+                                        '<div style="color:rgba(255,255,255,0.5);font-size:13px;">Running v' + info.current_version + '</div>' +
+                                    '</div>';
                             }
                         } catch(e) {
-                            content.innerHTML = '<div style="background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:24px;">' +
-                                '<div style="color:rgb(239,68,68);font-size:14px;">Error checking for updates: ' + e + '</div></div>';
+                            content.innerHTML =
+                                '<div style="' + cardStyle() + '">' +
+                                    '<div style="color:rgb(239,68,68);font-size:13px;">Could not check for updates: ' + e + '</div>' +
+                                '</div>';
                         }
                     }
 
-                    // Poll for settings page (SPA navigation doesn't trigger DOM mutations reliably)
+                    async function startInstallUI() {
+                        var content = document.getElementById('qwen-update-content');
+                        if (!content) return;
+
+                        content.innerHTML =
+                            '<div style="' + cardStyle() + '">' +
+                                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
+                                    '<span style="font-size:20px;">&#x2b07;</span>' +
+                                    '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;">Downloading Update</div>' +
+                                '</div>' +
+                                '<div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:4px;" id="dl-status">Starting download...</div>' +
+                                '<div style="' + progressBarStyle() + '"><div id="dl-bar" style="' + progressFillStyle(0) + '"></div></div>' +
+                                '<div style="color:rgba(255,255,255,0.4);font-size:12px;" id="dl-bytes">0 / 0 MB</div>' +
+                            '</div>';
+
+                        // Listen for progress events
+                        var unlisten = await window.__TAURI__.event.listen('update-progress', function(event) {
+                            var data = event.payload;
+                            var bar = document.getElementById('dl-bar');
+                            var status = document.getElementById('dl-status');
+                            var bytes = document.getElementById('dl-bytes');
+                            if (bar) bar.style.width = data.progress + '%';
+                            if (status) status.textContent = data.status;
+                            if (bytes && data.downloaded) bytes.textContent = data.downloaded + ' / ' + data.total + ' MB';
+                        });
+
+                        try {
+                            await window.__TAURI__.core.invoke('install_update_with_progress');
+                            unlisten();
+
+                            // Install complete — show restart
+                            content.innerHTML =
+                                '<div style="' + cardStyle() + 'text-align:center;">' +
+                                    '<div style="font-size:32px;margin-bottom:8px;">&#x2705;</div>' +
+                                    '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;margin-bottom:4px;">Update Installed</div>' +
+                                    '<div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:16px;">Restart the app to apply changes</div>' +
+                                    '<button id="qwen-restart-btn" style="' + btnStyle() + '">Restart Now</button>' +
+                                '</div>';
+                            document.getElementById('qwen-restart-btn').onclick = async function() {
+                                var btn = document.getElementById('qwen-restart-btn');
+                                btn.textContent = 'Restarting...';
+                                btn.disabled = true;
+                                await window.__TAURI__.core.invoke('restart_app');
+                            };
+                        } catch(e) {
+                            unlisten();
+                            content.innerHTML =
+                                '<div style="' + cardStyle() + '">' +
+                                    '<div style="color:rgb(239,68,68);font-size:13px;">Update failed: ' + e + '</div>' +
+                                    '<button id="qwen-retry-btn" style="' + btnStyle() + 'margin-top:12px;">Retry</button>' +
+                                '</div>';
+                            document.getElementById('qwen-retry-btn').onclick = async function() {
+                                startInstallUI();
+                            };
+                        }
+                    }
+
                     var checkInterval = setInterval(function() {
                         if (window.location.href.indexOf('/settings') !== -1) {
                             injectUpdatesTab();
                         }
                     }, 500);
 
-                    // Also listen for SPA navigation events
                     window.addEventListener('popstate', function() {
                         if (window.location.href.indexOf('/settings') !== -1) {
                             setTimeout(injectUpdatesTab, 300);
                         }
                     });
 
-                    // Initial check
                     if (window.location.href.indexOf('/settings') !== -1) {
                         setTimeout(injectUpdatesTab, 500);
                     }
+
+                    // Global update banner — listens for update-available event
+                    window.__TAURI__.event.listen('update-available', function(event) {
+                        if (document.getElementById('qwen-update-banner')) return;
+                        var data = event.payload;
+                        var style = document.createElement('style');
+                        style.id = 'qwen-banner-styles';
+                        style.textContent = '#qwen-banner-go:hover { background: rgb(117, 112, 257) !important; } #qwen-banner-dismiss:hover { background: rgba(255,255,255,0.08) !important; color: rgb(247,248,252) !important; }';
+                        document.head.appendChild(style);
+                        var banner = document.createElement('div');
+                        banner.id = 'qwen-update-banner';
+                        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:rgb(46,46,51);border-bottom:1px solid rgba(255,255,255,0.08);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-family:system-ui,ui-sans-serif,-apple-system,BlinkMacSystemFont,Inter,NotoSansHans,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+                        banner.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">' +
+                            '<span style="font-size:16px;color:rgb(97,92,237);flex-shrink:0;">&#x2b07;</span>' +
+                            '<div style="min-width:0;"><div style="font-size:13px;font-weight:500;color:rgb(247,248,252);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Update ' + data.version + ' available</div>' +
+                            '<div style="font-size:11px;color:rgba(255,255,255,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + data.notes.substring(0, 80) + '...</div></div></div>' +
+                            '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+                            '<button id="qwen-banner-go" style="padding:5px 14px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:6px;font-size:12px;cursor:pointer;height:26px;font-family:inherit;transition:background 0.15s ease;">Go to Settings</button>' +
+                            '<button id="qwen-banner-dismiss" style="padding:5px 10px;background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:12px;cursor:pointer;height:26px;transition:background 0.15s ease, color 0.15s ease;">&#x2715;</button></div>';
+                        document.body.appendChild(banner);
+                        document.getElementById('qwen-banner-go').addEventListener('click', function() {
+                            window.location.href = 'https://chat.qwen.ai/settings';
+                        });
+                        document.getElementById('qwen-banner-dismiss').addEventListener('click', function() {
+                            var b = document.getElementById('qwen-update-banner');
+                            if (b) b.remove();
+                            var s = document.getElementById('qwen-banner-styles');
+                            if (s) s.remove();
+                        });
+                    });
                 })();
             "##;
 
@@ -414,6 +556,17 @@ pub fn run() {
                 check_for_updates(&app_handle, false).await;
             });
 
+            // Periodic update check every 4 hours
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tokio::time::{sleep, Duration};
+                sleep(Duration::from_secs(4 * 60 * 60)).await;
+                loop {
+                    check_for_updates(&app_handle, false).await;
+                    sleep(Duration::from_secs(4 * 60 * 60)).await;
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -440,8 +593,9 @@ pub fn run() {
             window::update_title_bar_for_system_theme,
             window::get_language,
             events::webview_loaded,
-            install_update,
+            install_update_with_progress,
             get_update_info,
+            restart_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -464,6 +618,7 @@ pub fn run() {
 
 async fn check_for_updates(app: &tauri::AppHandle, manual: bool) {
     use tauri_plugin_updater::UpdaterExt;
+    use tauri::Emitter;
 
     let updater = match app.updater() {
         Ok(u) => u,
@@ -484,69 +639,29 @@ async fn check_for_updates(app: &tauri::AppHandle, manual: bool) {
                 .replace('\n', "\\n")
                 .replace('"', "\\\"");
 
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.eval(format!(
-                    r#"(function() {{
-                        if (document.getElementById('qwen-update-banner')) return;
-                        var style = document.createElement('style');
-                        style.id = 'qwen-banner-styles';
-                        style.textContent = '#qwen-banner-install:hover {{ background: rgb(117, 112, 257) !important; }} #qwen-banner-install:active {{ background: rgb(87, 82, 227) !important; }} #qwen-banner-dismiss:hover {{ background: rgba(255,255,255,0.08) !important; color: rgb(247,248,252) !important; }}';
-                        document.head.appendChild(style);
-                        var banner = document.createElement('div');
-                        banner.id = 'qwen-update-banner';
-                        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:rgb(46,46,51);border-bottom:1px solid rgba(255,255,255,0.08);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-family:system-ui,ui-sans-serif,-apple-system,BlinkMacSystemFont,Inter,NotoSansHans,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
-                        banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">' +
-                            '<span style="font-size:18px;color:rgb(97,92,237);flex-shrink:0;">&#x2b07;</span>' +
-                            '<div style="min-width:0;"><div style="font-size:14px;font-weight:500;color:rgb(247,248,252);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Update {} available</div>' +
-                            '<div style="font-size:12px;color:rgba(255,255,255,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{} </div></div></div>' +
-                            '<div style="display:flex;gap:8px;flex-shrink:0;">' +
-                            '<button id="qwen-banner-install" style="padding:6px 16px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:6px;font-size:13px;font-weight:400;cursor:pointer;height:28px;font-family:\"JetBrains Mono\",monospace;transition: background 0.15s ease;">View in Settings</button>' +
-                            '<button id="qwen-banner-dismiss" style="padding:6px 12px;background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:13px;cursor:pointer;height:28px;transition: background 0.15s ease, color 0.15s ease;">&#x2715;</button></div>';
-                        document.body.appendChild(banner);
-                        document.getElementById('qwen-banner-install').addEventListener('click', function() {{
-                            var btn = document.getElementById('qwen-banner-install');
-                            btn.textContent = 'Opening...';
-                            btn.disabled = true;
-                            btn.style.opacity = '0.7';
-                            btn.style.cursor = 'wait';
-                            window.location.href = 'https://chat.qwen.ai/settings';
-                        }});
-                        document.getElementById('qwen-banner-dismiss').addEventListener('click', function() {{
-                            var b = document.getElementById('qwen-update-banner');
-                            if (b) b.remove();
-                            var s = document.getElementById('qwen-banner-styles');
-                            if (s) s.remove();
-                        }});
-                    }})();"#,
-                    version, notes
-                ));
-            }
+            let _ = app.emit(
+                "update-available",
+                serde_json::json!({
+                    "version": version,
+                    "notes": notes
+                }),
+            );
         }
         Ok(None) => {
             if manual {
                 log::info!("[Updater] Already up to date");
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.eval(r#"alert("You are running the latest version.");"#);
-                }
             }
         }
         Err(e) => {
             log::error!("[Updater] Update check failed: {}", e);
-            if manual {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.eval(format!(
-                        r#"alert("Update check failed:\n{}");"#,
-                        e.to_string().replace('"', "\\\"")
-                    ));
-                }
-            }
         }
     }
 }
 
 #[tauri::command]
-async fn install_update(app: tauri::AppHandle, r#type: String) -> Result<(), String> {
+async fn install_update_with_progress(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
+    use tauri::Emitter;
 
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater
@@ -555,64 +670,64 @@ async fn install_update(app: tauri::AppHandle, r#type: String) -> Result<(), Str
         .map_err(|e| e.to_string())?
         .ok_or("No update available")?;
 
-    match r#type.as_str() {
-        "appimage" => {
-            log::info!("[Updater] Installing AppImage update");
-            update
-                .download_and_install(|_bytes, _total| {}, || {})
-                .await
-                .map_err(|e| e.to_string())?;
-            log::info!("[Updater] AppImage update installed successfully");
-        }
-        "deb" => {
-            let url = format!(
-                "https://github.com/youssefvdel/qwen-studio/releases/download/v{}/qwen-studio_{}_amd64.deb",
-                update.version, update.version
-            );
-            log::info!("[Updater] Downloading DEB: {}", url);
-            let tmp_path = format!("/tmp/qwen-studio_{}.deb", update.version);
-            let status = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!(
-                    "curl -L '{}' -o '{}' && pkexec dpkg -i '{}'",
-                    url, tmp_path, tmp_path
-                ))
-                .status()
-                .map_err(|e| e.to_string())?;
-            if !status.success() {
-                return Err("Failed to install DEB package".to_string());
-            }
-            log::info!("[Updater] DEB update installed");
-            app.restart();
-        }
-        "rpm" => {
-            let url = format!(
-                "https://github.com/youssefvdel/qwen-studio/releases/download/v{}/qwen-studio-{}.x86_64.rpm",
-                update.version, update.version
-            );
-            log::info!("[Updater] Downloading RPM: {}", url);
-            let tmp_path = format!("/tmp/qwen-studio-{}.x86_64.rpm", update.version);
-            let status = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!(
-                    "curl -L '{}' -o '{}' && pkexec rpm -Uvh '{}'",
-                    url, tmp_path, tmp_path
-                ))
-                .status()
-                .map_err(|e| e.to_string())?;
-            if !status.success() {
-                return Err("Failed to install RPM package".to_string());
-            }
-            log::info!("[Updater] RPM update installed");
-            app.restart();
-        }
-        _ => {
-            let _ = open::that("https://github.com/youssefvdel/qwen-studio/releases/latest");
-            return Ok(());
-        }
-    }
+    log::info!("[Updater] Downloading update {}", update.version);
 
+    let mut downloaded_bytes = 0u64;
+    let mut total_bytes = 0u64;
+
+    let bytes = update
+        .download(
+            |chunk_len, total| {
+                downloaded_bytes += chunk_len as u64;
+                if total_bytes == 0 {
+                    total_bytes = total.unwrap_or(0);
+                }
+                let pct = if total_bytes > 0 {
+                    (downloaded_bytes as f64 / total_bytes as f64) * 100.0
+                } else {
+                    0.0
+                };
+                let dl_mb = downloaded_bytes as f64 / 1048576.0;
+                let total_mb = total_bytes as f64 / 1048576.0;
+                let _ = app.emit(
+                    "update-progress",
+                    serde_json::json!({
+                        "phase": "download",
+                        "progress": pct,
+                        "downloaded": format!("{:.1}", dl_mb),
+                        "total": format!("{:.1}", total_mb),
+                        "status": format!("Downloading... {:.0}%", pct)
+                    }),
+                );
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    log::info!("[Updater] Download complete, installing...");
+
+    let _ = app.emit(
+        "update-progress",
+        serde_json::json!({
+            "phase": "install",
+            "progress": 100.0,
+            "downloaded": "",
+            "total": "",
+            "status": "Installing..."
+        }),
+    );
+
+    update.install(bytes).map_err(|e| e.to_string())?;
+
+    log::info!("[Updater] Update installed successfully");
     Ok(())
+}
+
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
+    log::info!("[Updater] Restarting app");
+    app.restart();
 }
 
 #[derive(serde::Serialize)]
