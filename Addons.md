@@ -1,3 +1,3 @@
-- add to setting page tab show the app version and if there is new update and allow user to update form there 
-- add skills button in the chat to allow user to load skills in app 
-- what to add side bar to show the qwen core mcp output to show user what the mcp changed and stuff like this /
+- add to setting page tab show the app version and if there is new update and allow user to update form there
+- add skills button in the chat to allow user to load skills in app
+- what to add side bar to show the qwen core mcp output to show user what the mcp changed and stuff like this

@@ -1,37 +1,36 @@
 # Qwen Studio Architecture
 
+> **Version**: 2.3.0 | **Last Updated**: 2026-05-19  
+> **Stack**: Tauri v2 + WebKitGTK + Rust
+
 ## System Overview
 
 ```mermaid
 flowchart TB
     subgraph User["User Interface Layer"]
-        WebView["chat.qwen.ai WebView<br/>(Renderer Process)"]
-        SkillsMenu["Skills Menu<br/>(Electron Menu)"]
+        WebView["chat.qwen.ai WebView<br/>(WebKitGTK)"]
+        Settings["Settings UI<br/>(Injected JS)"]
         SystemTray["System Tray"]
     end
 
-    subgraph Electron["Electron Application"]
-        subgraph Main["Main Process"]
-            Index["index.ts<br/>(Bootstrap)"]
-            WM["window-manager.ts<br/>(BrowserWindow)"]
-            IPC["ipc-handlers.ts<br/>(IPC Bridge)"]
-            MCPConfig["mcp-config.ts<br/>(Path Resolution)"]
-            Skills["skills-manager.ts<br/>(Skill Injection)"]
-            Lifecycle["app-lifecycle.ts<br/>(Deep Links)"]
+    subgraph Tauri["Tauri Application"]
+        subgraph Rust["Rust Backend"]
+            Lib["lib.rs<br/>(Bootstrap & Commands)"]
+            Window["window.rs<br/>(Window Management)"]
+            IPC["ipc-handlers<br/>(Command Bridge)"]
+            MCP["mcp.rs<br/>(MCP Server Management)"]
+            Tray["tray.rs<br/>(System Tray)"]
+            Menu["menu.rs<br/>(GTK HeaderBar)"]
         end
 
-        subgraph MCP["MCP Proxy Layer"]
-            Proxy["proxy.ts<br/>(McpProxy)"]
-            Client["server-client.ts<br/>(McpServerClient)"]
-        end
-
-        subgraph Preload["Preload Script"]
-            ContextBridge["contextBridge<br/>(window.electronAPI)"]
+        subgraph Web["Web Injection"]
+            Bridge["electron-bridge.js<br/>(window.__TAURI__)"]
+            MCPBridge["mcp-bridge.mjs<br/>(MCP Proxy)"]
         end
     end
 
     subgraph Servers["MCP Servers (stdio)"]
-        QwenCore["qwen-core<br/>(40 tools)"]
+        QwenCore["qwen-core<br/>(28 tools)"]
         Fetch["fetch MCP"]
         FS["filesystem MCP"]
     end
@@ -43,29 +42,27 @@ flowchart TB
         FileSystem["Local Filesystem"]
     end
 
-    WebView -->|IPC via contextBridge| ContextBridge
-    ContextBridge -->|ipcRenderer.invoke| IPC
-    IPC -->|function calls| Index
-    Index -->|creates| WM
-    Index -->|owns| Proxy
-    Proxy -->|spawns| Client
-    Client -->|stdio spawn| QwenCore
-    Client -->|stdio spawn| Fetch
-    Client -->|stdio spawn| FS
+    WebView -->|JS Bridge| Bridge
+    Bridge -->|invoke| IPC
+    IPC -->|Rust commands| Lib
+    Lib -->|creates| Window
+    Lib -->|owns| MCP
+    MCP -->|spawns| QwenCore
+    MCP -->|spawns| Fetch
+    MCP -->|spawns| FS
     
-    IPC -->|read/write| Settings
-    IPC -->|inject| Skills
-    WM -->|loads URL| QwenAI
+    Lib -->|read/write| Settings
+    Lib -->|inject| Bridge
+    Window -->|loads URL| QwenAI
     QwenAI -->|stores| IndexedDB
-    QwenAI -->|console messages| WM
+    QwenAI -->|console messages| Window
     
     QwenCore -->|read/write| FileSystem
     Fetch -->|HTTP requests| External
     FS -->|file operations| FileSystem
     
-    Index -->|manages| SystemTray
-    Index -->|builds| SkillsMenu
-    Index -->|handles| Lifecycle
+    Lib -->|manages| SystemTray
+    Lib -->|builds| Menu
 ```
 
 ## Data Flow: MCP Tool Execution

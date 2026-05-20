@@ -1,7 +1,7 @@
 # 🧠 Qwen-Core Agent Brain Documentation
 
 > **Purpose**: Complete reference for autonomous agents working with qwen-core  
-> **Version**: 2.0.0 | **Last Updated**: 2026-05-16  
+> **Version**: 2.3.0 | **Last Updated**: 2026-05-19  
 > **For**: AI agents, developers, system integrators  
 
 ---
