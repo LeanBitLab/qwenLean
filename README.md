@@ -5,7 +5,7 @@
 [![Platform](https://img.shields.io/badge/platform-Linux-orange.svg)](https://github.com/youssefvdel/qwen-studio/releases)
 [![Stars](https://img.shields.io/github/stars/youssefvdel/qwen-studio?style=social)](https://github.com/youssefvdel/qwen-studio/stargazers)
 
-Open-source Qwen AI (Tongyi Qianwen) desktop client for Linux. Run Alibaba's Qwen models natively on Ubuntu, Fedora, Arch, and all Linux distributions with full MCP (Model Context Protocol) support.
+Open-source Qwen AI desktop client for Linux. Run Alibaba's Qwen models natively with full MCP (Model Context Protocol) support and automatic updates.
 
 The official Qwen Studio app only supports Windows and macOS. This project brings the same desktop experience to Linux.
 
@@ -16,23 +16,23 @@ The official Qwen Studio app only supports Windows and macOS. This project bring
 ### Option 1: AppImage (recommended — works on every distro)
 
 ```bash
-wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/Qwen-2.0.1-x86_64.AppImage
-chmod +x Qwen-2.0.1-x86_64.AppImage
-./Qwen-2.0.1-x86_64.AppImage
+wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/Qwen-2.2.0-x86_64.AppImage
+chmod +x Qwen-2.2.0-x86_64.AppImage
+./Qwen-2.2.0-x86_64.AppImage
 ```
 
 ### Option 2: Debian/Ubuntu
 
 ```bash
-wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio_2.0.1_amd64.deb
-sudo apt install ./qwen-studio_2.0.1_amd64.deb
+wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio_2.2.0_amd64.deb
+sudo apt install ./qwen-studio_2.2.0_amd64.deb
 qwen-studio
 ```
 
 ### Option 3: Fedora/RHEL
 
 ```bash
-sudo dnf install https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio-2.0.1.x86_64.rpm
+sudo dnf install https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio-2.2.0.x86_64.rpm
 qwen-studio
 ```
 
@@ -44,112 +44,63 @@ qwen-studio
 
 | Feature             | Description                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------ |
-| Full Qwen AI access | Native desktop wrapper for chat.qwen.ai — supports Qwen3-6Plus, Qwen-Max, Qwen-Plus  |
+| Full Qwen AI access | Native desktop wrapper for chat.qwen.ai — supports Qwen3.6-Plus, Qwen-Max, Qwen-Plus |
 | MCP integration     | Connect AI to files, browser, databases, and custom tools via Model Context Protocol |
 | System tray         | Minimize to tray, right-click menu, runs in background                               |
 | 12 languages        | zh-CN, en-US, zh-TW, ja-JP, ko-KR, ru-RU, de-DE, fr-FR, es-ES, it-IT, pt-PT, ar-BH   |
 | Theme support       | Light/dark mode with automatic system theme detection                                |
-| Privacy first       | Sandboxed webview, context isolation, Electron Fuses, no telemetry                   |
+| Auto updates        | In-app update notifications with one-click install (AppImage, DEB, RPM)              |
 | 3 package formats   | AppImage (universal), .deb (Debian/Ubuntu), .rpm (Fedora/RHEL)                       |
-| Bundled runtimes    | Includes Bun + UV — MCP servers work with zero system installs                       |
 | Deep linking        | `qwen://` protocol support for authentication and sharing                            |
-| Skills system       | Reusable system prompts as `.md` files — inject into chat with one click             |
-
----
-
-## Screenshots
-
-![Main Window](resources/screenshots/skills_menu.png)
-_Main chat interface with Skills menu open_
-
-![MCP Configuration](resources/screenshots/mcp_config.png)
-_MCP configuration panel_
-
----
-
-## FAQ
-
-### What is Qwen AI?
-
-Qwen (通义千问, Tongyi Qianwen) is a family of large language models developed by Alibaba Cloud's Tongyi Lab. It includes Qwen-Max, Qwen-Plus, Qwen3-6Plus, and Qwen3-235B-A22B.
-
-### Is this the official Qwen Studio app?
-
-No. The official app only supports Windows and macOS. This is a community-built, open-source desktop wrapper for Linux, reverse-engineered from the official app's protocol.
-
-### Is it free?
-
-Yes. MIT license. No account needed beyond your Qwen account on chat.qwen.ai.
-
-### What distributions are supported?
-
-All of them. AppImage works everywhere. We also ship native .deb and .rpm packages.
-
-### What is MCP?
-
-Model Context Protocol lets Qwen interact with local tools and data. Enabled MCP servers can read/write files, automate your browser, query databases, and run CLI tools — all from chat.
-
-### Does it work on Wayland?
-
-Yes, but some Wayland compositors need `--enable-features=UseOzonePlatform --ozone-platform=wayland` as a launch flag. X11 works out of the box.
-
-### Browser vs Desktop — why use this?
-
-| Browser              | Qwen Studio for Linux                |
-| -------------------- | ------------------------------------ |
-| No system tray       | System tray integration              |
-| No MCP support       | Full MCP (files, browser, databases) |
-| No file picker       | Native file picker                   |
-| No deep linking      | qwen:// protocol                     |
-| No persistent skills | Skills system with .md files         |
-| Tab clutter          | Dedicated app window                 |
+| Privacy first       | Sandboxed WebView, no telemetry, zero data collection                                |
 
 ---
 
 ## Architecture
 
-Built with Electron 34 + TypeScript, mirroring the official Qwen Studio app:
+Built with **Tauri v2** (Rust + WebKitGTK), replacing the previous Electron version:
 
 ```mermaid
 graph TB
-    subgraph QwenStudio["Qwen Studio Application"]
-        Main[Main Process<br/>Electron]
-        Render[Renderer Process<br/>WebView]
-        Preload[Preload Script<br/>Context Bridge]
-        MCP[MCP Proxy<br/>Server Management]
+    subgraph QwenStudio["Qwen Studio Application (Tauri v2)"]
+        Rust[Rust Backend<br/>lib.rs]
+        WebView[WebKitGTK WebView<br/>chat.qwen.ai]
+        Bridge[JS Bridge<br/>electron-bridge.js]
+        MCP[MCP Bridge<br/>mcp-bridge.mjs]
     end
 
     subgraph External["External Services"]
         Qwen[chat.qwen.ai<br/>Qwen Cloud]
         OAuth[OAuth Provider<br/>GitHub/Google/Alibaba]
-        MCPS[MCP Servers<br/>Filesystem/Browser/DB]
+        MCPS[MCP Servers<br/>qwen-core/Filesystem/etc]
     end
 
-    Main -->|Load URL| Render
-    Render -->|IPC| Preload
-    Preload -->|Invoke| Main
-    Main -->|Manage| MCP
-    MCP -->|stdio/SSE| MCPS
-    Render -->|HTTPS| Qwen
-    Render -->|OAuth| OAuth
-    OAuth -->|qwen://token| Main
-    Main -->|set_cookie| Render
+    Rust -->|Load URL| WebView
+    WebView -->|Initialization Script| Bridge
+    Bridge -->|Invoke| Rust
+    Rust -->|Manage| MCP
+    MCP -->|stdio| MCPS
+    WebView -->|HTTPS| Qwen
+    WebView -->|OAuth| OAuth
+    OAuth -->|qwen://token| Rust
+    Rust -->|Inject cookies| WebView
 ```
 
 ### Module Structure
 
-| Module                       | Purpose                                         |
-| ---------------------------- | ----------------------------------------------- |
-| `src/main/index.ts`          | App bootstrap, MCP defaults, menu, update check |
-| `src/main/window-manager.ts` | BrowserWindow, system tray, GPU flags           |
-| `src/main/ipc-handlers.ts`   | 17 IPC handlers (MCP, theme, dialogs)           |
-| `src/main/skills-manager.ts` | Skills system (inject prompts into chat)        |
-| `src/main/app-lifecycle.ts`  | Protocol handler, deep links, quit state        |
-| `src/main/runtime.ts`        | Bundled bun/uv path resolution                  |
-| `src/main/mcp-config.ts`     | MCP config adaptation (npx→bun, uvx→uvx)        |
-| `src/mcp/proxy.ts`           | Multi-server MCP connection management          |
-| `src/mcp/server-client.ts`   | Single MCP server client (stdio/SSE/HTTP)       |
-| `src/preload/index.ts`       | contextBridge → window.electronAPI              |
+| Module              | Purpose                                          |
+| ------------------- | ------------------------------------------------ |
+| `src/lib.rs`    | App bootstrap, WebView creation, update commands |
+| `src/main.rs`   | Binary entry point                               |
+| `src/window.rs` | Window management, deep link handling            |
+| `src/mcp.rs`    | MCP server management, tool calls                |
+| `src/dialogs.rs`| Native file picker, confirmation dialogs         |
+| `src/events.rs` | Event forwarding between Rust and WebView        |
+| `src/settings.rs`| Settings storage (JSON)                         |
+| `src/tray.rs`   | System tray setup                                |
+| `src/menu.rs`   | GTK HeaderBar menu (Linux)                       |
+| `electron-bridge.js` | JS bridge injected into WebView            |
+| `mcp-bridge.mjs`| MCP proxy server (Node.js)                       |
 
 ### Authentication Flow
 
@@ -158,17 +109,17 @@ sequenceDiagram
     participant User
     participant WebView
     participant OAuth
-    participant Main
+    participant Rust
     participant Renderer
 
     User->>WebView: Click Login
     WebView->>OAuth: Open OAuth Popup
     User->>OAuth: Authenticate
-    OAuth->>Main: Redirect qwen://open?token=xxx
-    Main->>Main: validateProtocol()
-    Main->>Main: Extract token
-    Main->>Renderer: sendEvent('set_cookie', token)
-    Renderer->>WebView: Inject cookies
+    OAuth->>Rust: Redirect qwen://open?token=xxx
+    Rust->>Rust: validateDeepLink()
+    Rust->>Rust: Extract token
+    Rust->>Renderer: sendEvent('set_cookie', token)
+    Renderer->>WebView: Inject cookies + localStorage
     Renderer->>WebView: Navigate to chat.qwen.ai
     WebView->>Qwen: Request with auth cookie
     Qwen->>WebView: Authenticated response
@@ -182,8 +133,11 @@ sequenceDiagram
 ### Prerequisites
 
 - Node.js 22+
-- npm
-- Linux (x64 or ARM64)
+- Rust stable toolchain
+- Linux development libraries:
+  - **Debian/Ubuntu:** `sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`
+  - **Fedora:** `sudo dnf install gtk3-devel webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel`
+  - **Arch:** `sudo pacman -S webkit2gtk-4.1 libappindicator-gtk3 librsvg`
 
 ### Install & Run
 
@@ -191,21 +145,27 @@ sequenceDiagram
 git clone https://github.com/youssefvdel/qwen-studio.git
 cd qwen-studio
 npm install
-npm start
+npm run tauri:dev
 ```
 
 ### Build Packages
 
 ```bash
-# AppImage
-npm run build
-
 # All formats
-npm run make
+npm run tauri:build
 
 # Individual formats
-npm run make:deb    # Debian/Ubuntu
-npm run make:rpm    # Fedora/RHEL
+npm run tauri:build:deb    # Debian/Ubuntu
+npm run tauri:build:rpm    # Fedora/RHEL
+npm run tauri:build:appimage   # Universal AppImage
+```
+
+### Code Quality
+
+```bash
+cargo clippy -- -D warnings   # MUST pass
+cargo check
+cargo fmt
 ```
 
 ### Project Structure
@@ -213,26 +173,22 @@ npm run make:rpm    # Fedora/RHEL
 ```
 qwen-studio/
 ├── src/
-│   ├── main/           # Electron main process
-│   │   ├── index.ts
-│   │   ├── window-manager.ts
-│   │   ├── ipc-handlers.ts
-│   │   ├── skills-manager.ts
-│   │   ├── app-lifecycle.ts
-│   │   ├── runtime.ts
-│   │   └── mcp-config.ts
-│   ├── mcp/
-│   │   ├── proxy.ts
-│   │   └── server-client.ts
-│   ├── preload/
-│   │   └── index.ts
-│   ├── renderer/
-│   └── shared/
-├── resources/
-│   ├── bun/linux-x64/
-│   └── uv/linux-x64/
-├── dist/
-└── package.json
+│   ├── lib.rs         # Tauri setup, WebView, update commands
+│   ├── main.rs        # Binary entry point
+│   ├── window.rs      # Window management, deep links
+│   ├── mcp.rs         # MCP server management
+│   ├── dialogs.rs     # Native dialogs
+│   ├── events.rs      # Event forwarding
+│   ├── settings.rs    # Settings storage
+│   ├── tray.rs        # System tray
+│   └── menu.rs        # GTK HeaderBar menu
+│   ├── tauri.conf.json    # Tauri configuration
+│   ├── Cargo.toml         # Rust dependencies
+│   ├── electron-bridge.js # JS bridge injected into WebView
+│   └── mcp-bridge.mjs     # MCP proxy server
+├── docs/                  # Architecture docs, studies
+├── package.json
+└── qwen-studio.desktop
 ```
 
 ---
@@ -243,11 +199,11 @@ qwen-studio/
 
 | Server              | Capability                                      |
 | ------------------- | ----------------------------------------------- |
+| qwen-core           | 28 tools: file ops, search, bash, time, agents  |
 | Filesystem          | Read, write, search, list files                 |
 | Fetch               | Access web APIs and URLs from chat              |
 | Sequential-Thinking | Multi-step reasoning                            |
 | Desktop-Commander   | Run shell commands, manage processes            |
-| Browser             | Automate web browsing, screenshots (Playwright) |
 | SQLite/PostgreSQL   | Query databases from chat                       |
 
 ### Example Config
@@ -258,51 +214,29 @@ Default MCP servers are created on first launch. Customize via the app's setting
 {
   "mcpServers": {
     "qwen-core": {
-      "name": "qwen-core",
       "command": "npx",
-      "args": ["tsx", "/opt/qwen-studio/resources/qwen-core/src/index.ts"],
-      "cwd": "/opt/qwen-studio/resources/qwen-core",
-      "env": {
-        "HOME": "/home/<user>",
-        "USER": "<user>",
-        "PATH": "/opt/qwen-studio/resources/resources/bun/linux-x64:/opt/qwen-studio/resources/resources/uv/linux-x64:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin:/home/<user>/.local/bin",
-        "MCP_ALLOWED_DIRS": "/home/<user>,/home/<user>/Projects,/tmp",
-        "MCP_TIMEOUT": "60000"
-      },
+      "args": ["-y", "qwen-core"],
       "transportType": "stdio"
     }
   }
 }
 ```
 
-The app automatically replaces `npx`, `bun`, and `uvx` commands with bundled runtime paths.
+Config location: `~/.config/qwen-studio/settings.json`
 
 ---
 
-## Skills System
+## Auto Updates
 
-Create system prompts as `.md` files in `~/.config/qwen-studio/skills/`. Inject into chat via the Skills menu.
+The app checks for updates on startup and every 4 hours. When an update is available:
+- A banner appears at the top of the app
+- Click **View in Settings** to navigate to the Settings page
+- App restarts automatically after installation
 
-### Example
-
-```markdown
-# Python Expert
-
-You are a senior Python developer. Focus on:
-
-- PEP8 compliance and type hints
-- Performance optimization
-- Error handling and testing
-- Modern Python 3.12+ features
-```
-
-Menu → Skills → Python Expert injects the prompt.
-
-### Built-in Skills
-
-- `linux-power-user.md` — Terminal commands and system administration
-- `code-reviewer.md` — Code review with scoring
-- `python-expert.md` — Python development guidance (sample)
+Supported install types:
+- **AppImage**: Uses Tauri updater plugin (download + replace + restart)
+- **DEB**: Downloads via curl → `pkexec dpkg -i` → restart
+- **RPM**: Downloads via curl → `pkexec rpm -Uvh` → restart
 
 ---
 
@@ -316,12 +250,11 @@ zh-CN, en-US, zh-TW, ja-JP, ko-KR, ru-RU, de-DE, fr-FR, es-ES, it-IT, pt-PT, ar-
 
 | Layer             | Implementation                            |
 | ----------------- | ----------------------------------------- |
-| Context Isolation | No direct Node.js access from renderer    |
-| Sandbox           | WebView runs in isolated process          |
-| Electron Fuses    | Dangerous features disabled in production |
+| WebView Sandbox   | WebKitGTK runs in isolated process        |
 | IPC Only          | All communication through typed channels  |
 | MCP Validation    | Only configured servers can connect       |
 | No Telemetry      | Zero data collection                      |
+| Deep Link Auth    | Token validation before injection         |
 
 ---
 
@@ -329,10 +262,21 @@ zh-CN, en-US, zh-TW, ja-JP, ko-KR, ru-RU, de-DE, fr-FR, es-ES, it-IT, pt-PT, ar-
 
 | Issue                      | Status           | Workaround                                                                                                                                                                                                                                                                                                               |
 | -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Auto-update not configured | Planned          | Use package manager or download new release                                                                                                                                                                                                                                                                              |
-| Wayland compositors        | Partial          | Add `--ozone-platform=wayland` flag                                                                                                                                                                                                                                                                                      |
-| AppImage needs FUSE        | Distro-dependent | Install `libfuse2` or `fuse`                                                                                                                                                                                                                                                                                             |
-| Browser login redirect     | Open             | Login via the in-app window that appears when clicking login. If the external browser opens, copy the `qwen://open?token=xxx` URL from the browser address bar and run `xdg-open "qwen://open?token=YOUR_TOKEN"` in a terminal. This is a known limitation with AppImage protocol handlers on some desktop environments. |
+| WebKitGTK blank screen     | Known            | `WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1` (set automatically in package.json)                                                                                                                                                                                                                 |
+| Wayland compositors        | Partial          | `GDK_BACKEND=x11` (set automatically)                                                                                                                                                                                                                                                                                    |
+| Browser login redirect     | Open             | Login via the in-app window. If external browser opens, copy `qwen://open?token=xxx` URL and run `xdg-open "qwen://open?token=YOUR_TOKEN"` in terminal. Known limitation with AppImage protocol handlers on some desktop environments.                                                                                  |
+| MCP settings page network error | Expected    | Web app tries cloud backend. Local Tauri MCP handles everything. Do not fix.                                                                                                                                                                                                                                             |
+
+---
+
+## Debugging
+
+```bash
+cat ~/.config/qwen-studio/settings.json | python3 -m json.tool  # Check MCP config
+/usr/bin/qwen-studio 2>&1 | tee /tmp/qwen-studio.log            # Runtime logs
+npx qwen-core                                                    # Test MCP directly
+rm -rf ~/.config/qwen-studio/ && npm run tauri:dev              # Clean state test
+```
 
 ---
 
@@ -361,13 +305,25 @@ MIT License. See [LICENSE](LICENSE).
 
 ---
 
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) - System design and module structure
+- [Agent Brain](docs/AGENT_BRAIN.md) - Quick reference for developers
+- [Official App Analysis](docs/OFFICIAL_APP_ANALYSIS.md) - Reverse-engineered Electron app
+- [MCP Domain Analysis](docs/MCP_DOMAIN_ANALYSIS.md) - API endpoints and limitations
+- [Native TUI Study](docs/NATIVE_TUI_STUDY.md) - Proposal for native terminal client
+- [Security Audit](docs/SECURITY_AUDIT.md) - Security review and recommendations
+- [Parent ID Error Study](docs/PARENT_ID_ERROR_STUDY.md) - IndexedDB error analysis
+
+---
+
 ## Acknowledgments
 
 - Based on reverse engineering of the official Qwen Studio app (Windows/macOS)
 - Uses [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk) by Anthropic
-- Bundled runtimes: [Bun](https://bun.sh/) + [uv](https://github.com/astral-sh/uv)
-- Built with [Electron](https://www.electronjs.org/)
+- Built with [Tauri v2](https://v2.tauri.app/) (Rust + WebKitGTK)
+- Previous Electron version archived
 
 ---
 
-Keywords: Qwen AI Linux, Qwen Studio Linux, Tongyi Qianwen Linux, open source Qwen, free Qwen AI desktop, Alibaba Qwen Linux client, Qwen MCP Linux, Qwen3 Linux app, Qwen chat desktop Linux, Ubuntu Qwen AI, Fedora Qwen, Arch Linux Qwen, Electron Qwen app
+Keywords: Qwen AI Linux, Qwen Studio Linux, Tongyi Qianwen Linux, open source Qwen, free Qwen AI desktop, Alibaba Qwen Linux client, Qwen MCP Linux, Qwen3 Linux app, Qwen chat desktop Linux, Ubuntu Qwen AI, Fedora Qwen, Arch Linux Qwen, Tauri Qwen app
