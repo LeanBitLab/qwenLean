@@ -725,9 +725,11 @@ pub fn run() {
                 }
             }
 
-            // Check for updates on startup
+            // Check for updates on startup (delayed to ensure webview is ready)
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                use tokio::time::{sleep, Duration};
+                sleep(Duration::from_secs(3)).await;
                 check_for_updates(&app_handle, false).await;
             });
 
