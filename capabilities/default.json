@@ -2,9 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capabilities for Qwen Studio",
-  "windows": ["main"],
+  "windows": ["main", "window-*"],
   "remote": {
-    "urls": ["https://*.qwen.ai", "https://chat.qwen.ai"]
+    "urls": ["https://*.qwen.ai", "https://chat.qwen.ai", "https://*.alibaba.com", "https://*.aliyun.com", "https://*.alibabacloud.com"]
   },
   "permissions": [
     "core:default",
@@ -19,6 +19,11 @@
     "shell:allow-open",
     "dialog:default",
     "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-home-read-recursive",
+    "fs:allow-desktop-read-recursive",
+    "fs:allow-document-read-recursive",
+    "fs:allow-download-read-recursive",
     "store:default",
     "mcp-client-connect",
     "mcp-client-close",

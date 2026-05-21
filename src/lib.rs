@@ -7,6 +7,12 @@ mod window;
 
 use tauri::Manager;
 
+#[cfg(target_os = "linux")]
+fn setup_gtk_drag_drop(_app: &tauri::AppHandle) {
+    log::info!("[DragDrop] Using Tauri built-in drag-drop (WebKitGTK)");
+    log::info!("[DragDrop] Events will be forwarded via Tauri window events");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -16,7 +22,8 @@ pub fn run() {
         }
     }
 
-    let electron_bridge = include_str!("../electron-bridge.js");
+    // Init script is now built by window::build_init_script() for consistency
+    // across all windows (main and additional)
 
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
@@ -25,18 +32,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
 .plugin(tauri_plugin_fs::init())
 .plugin(tauri_plugin_clipboard_manager::init())
-.plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            log::info!("[SingleInstance] Second instance launched with args: {:?}", args);
-            if let Some(url) = args.iter().find(|a| a.starts_with("qwen://")) {
-                log::info!("[SingleInstance] Deep link from second instance: {}", url);
-                let app = app.clone();
-                let url = url.clone();
-                tauri::async_runtime::spawn(async move {
-                    window::handle_deep_link_url(&app, &url).await;
-                });
-            }
-        }))
+// .plugin(tauri_plugin_deep_link::init()) // Disabled: auth handled in-WebView now
+        // Single-instance plugin removed to allow multiple windows
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_mcp_bridge::init())
         .setup(move |app| {
@@ -46,464 +43,17 @@ pub fn run() {
             app.manage(state);
             events::setup_event_forwarding(app.handle());
 
-            #[cfg(desktop)]
-            {
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    window::setup_deep_link(&handle).await;
-                });
-            }
+            // Deep-link disabled: auth now handled inside WebView (no external browser)
+            // #[cfg(desktop)]
+            // {
+            //     let handle = app.handle().clone();
+            //     tauri::async_runtime::spawn(async move {
+            //         window::setup_deep_link(&handle).await;
+            //     });
+            // }
 
             // Clear ALL storage and inject qwen-core BEFORE page loads
-            let pre_load_script = r#"
-                (function() {
-                    try {
-                        localStorage.clear();
-                        sessionStorage.clear();
-                        localStorage.setItem("LOCAL_MCP_SERVER", JSON.stringify([{
-                            id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                            name: "qwen-core",
-                            description: "Essential tools for file operations, search, and bash execution.",
-                            type: "stdio",
-                            params: { command: "npx", args: ["-y", "qwen-core"] },
-                            enabled: true,
-                            default: false,
-                            connectionStatus: "available",
-                            errorMessage: "",
-                            tools: []
-                        }]));
-                        
-                        // Enable paste via Tauri clipboard plugin (like Electron)
-                        document.addEventListener('paste', async (e) => {
-                            if (window.__TAURI__ && window.__TAURI__.clipboardManager) {
-                                e.preventDefault();
-                                try {
-                                    // Try to read image first
-                                    let pastedImage = null;
-                                    try {
-                                        console.log('Trying to read image from clipboard...');
-                                        const imageData = await window.__TAURI__.clipboardManager.readImage();
-                                        console.log('Image data:', imageData);
-                                        if (imageData) {
-                                            const rgba = await imageData.rgba();
-                                            const width = await imageData.width();
-                                            const height = await imageData.height();
-                                            console.log('Image size:', width, height);
-                                            const canvas = document.createElement('canvas');
-                                            canvas.width = width;
-                                            canvas.height = height;
-                                            const ctx = canvas.getContext('2d');
-                                            const imgData = new ImageData(new Uint8ClampedArray(rgba), width, height);
-                                            ctx.putImageData(imgData, 0, 0);
-                                            pastedImage = canvas.toDataURL('image/png');
-                                            console.log('Image converted to data URL');
-                                        }
-                                    } catch(imgErr) {
-                                        console.log('No image in clipboard or error:', imgErr.message);
-                                    }
-                                    
-                                    if (pastedImage) {
-                                        const target = document.activeElement;
-                                        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-                                            console.log('Cannot paste image in text input');
-                                        } else {
-                                            const img = document.createElement('img');
-                                            img.src = pastedImage;
-                                            img.style.maxWidth = '300px';
-                                            img.style.maxHeight = '200px';
-                                            target?.appendChild?.(img) || document.body.appendChild(img);
-                                        }
-                                    } else {
-                                        // Paste text
-                                        const text = await window.__TAURI__.clipboardManager.readText();
-                                        if (!text) return;
-                                        const input = document.activeElement;
-                                        if (input && (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA' || input.isContentEditable)) {
-                                            const start = input.selectionStart || 0;
-                                            const end = input.selectionEnd || 0;
-                                            const val = input.value || input.innerText || '';
-                                            const newVal = val.substring(0, start) + text + val.substring(end);
-                                            if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
-                                                input.value = newVal;
-                                                input.selectionStart = input.selectionEnd = start + text.length;
-                                            } else {
-                                                input.innerText = newVal;
-                                            }
-                                            input.dispatchEvent(new Event('input', { bubbles: true }));
-                                        } else {
-                                            document.execCommand('insertText', false, text);
-                                        }
-                                    }
-                                } catch(err) {
-                                    console.log('Paste error:', err);
-                                }
-                            }
-                        }, true);
-                        
-                        
-                    } catch(e) {}
-                })();
-            "#;
-
-            let zoom_script = r##"
-                (function() {
-                    let zoomLevel = 1.0;
-                    const ZOOM_STEP = 0.1;
-                    const MIN_ZOOM = 0.5;
-                    const MAX_ZOOM = 2.0;
-
-                    // Ctrl + mouse wheel zoom
-                    document.addEventListener('wheel', function(e) {
-                        if (e.ctrlKey) {
-                            e.preventDefault();
-                            if (e.deltaY < 0) {
-                                zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
-                            } else {
-                                zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
-                            }
-                            document.body.style.zoom = zoomLevel;
-                        }
-                    }, { passive: false, capture: true });
-
-                    // Ctrl + + (zoom in)
-                    document.addEventListener('keydown', function(e) {
-                        if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
-                            e.preventDefault();
-                            zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
-                            document.body.style.zoom = zoomLevel;
-                        }
-                        // Ctrl + - (zoom out)
-                        if (e.ctrlKey && e.key === '-') {
-                            e.preventDefault();
-                            zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
-                            document.body.style.zoom = zoomLevel;
-                        }
-                        // Ctrl + 0 (reset zoom)
-                        if (e.ctrlKey && (e.key === '0' || e.key === ')')) {
-                            e.preventDefault();
-                            zoomLevel = 1.0;
-                            document.body.style.zoom = zoomLevel;
-                        }
-                    });
-                })();
-            "##;
-
-            // Inject settings updates tab
-            let settings_script = r##"
-                (function() {
-                    var injected = false;
-
-                    function svgIcon(iconId, size) {
-                        size = size || 20;
-                        return '<svg width="' + size + '" height="' + size + '" fill="currentColor" aria-hidden="true" focusable="false" style="flex-shrink:0;color:rgb(247,248,252);"><use xlink:href="#' + iconId + '"></use></svg>';
-                    }
-
-                    function injectUpdatesTab() {
-                        if (injected) return;
-
-                        var sidebarContent = document.querySelector('.setting-side-bar-group-content');
-                        if (!sidebarContent) return;
-
-                        var aboutTab = null;
-                        var items = sidebarContent.querySelectorAll('.setting-side-bar-group-content-item');
-                        for (var i = 0; i < items.length; i++) {
-                            var title = items[i].querySelector('.setting-side-bar-group-content-item-title');
-                            if (title && title.textContent.trim() === 'About') {
-                                aboutTab = items[i];
-                                break;
-                            }
-                        }
-
-                        var tab = document.createElement('div');
-                        tab.id = 'qwen-updates-tab';
-                        tab.className = 'setting-side-bar-group-content-item';
-                        tab.setAttribute('data-spm-anchor-id', '');
-                        tab.innerHTML = '<span role="img" class="anticon">' + svgIcon('icon-line-download-02', 14) + '</span><div class="setting-side-bar-group-content-item-title" data-spm-anchor-id="">Updates</div>';
-
-                        if (aboutTab) {
-                            sidebarContent.insertBefore(tab, aboutTab);
-                        } else {
-                            sidebarContent.appendChild(tab);
-                        }
-
-                        var panel = document.createElement('div');
-                        panel.id = 'qwen-updates-panel';
-                        panel.className = 'qwen-chat-setting-general';
-                        panel.style.display = 'none';
-                        panel.innerHTML =
-                            '<div class="setting-content-title">' +
-                                '<div class="setting-content-title-title">Updates</div>' +
-                            '</div>' +
-                            '<div id="qwen-update-content" style="max-width:520px;"></div>';
-
-                        var mainContent = document.querySelector('.setting-content');
-                        if (mainContent) {
-                            mainContent.appendChild(panel);
-                        } else {
-                            document.body.appendChild(panel);
-                        }
-
-                        tab.onclick = function() {
-                            sidebarContent.querySelectorAll('.setting-side-bar-group-content-item').forEach(function(t) {
-                                t.classList.remove('selected');
-                            });
-                            tab.classList.add('selected');
-
-                            var contentArea = document.querySelector('.setting-content');
-                            if (contentArea) {
-                                contentArea.querySelectorAll(':scope > div').forEach(function(d) {
-                                    if (d.id !== 'qwen-updates-panel') d.style.display = 'none';
-                                });
-                            }
-
-                            panel.style.display = 'block';
-                            checkForUpdatesUI();
-                        };
-
-                        var observer = new MutationObserver(function(mutations) {
-                            for (var i = 0; i < mutations.length; i++) {
-                                var m = mutations[i];
-                                if (m.attributeName === 'class' && m.target !== tab) {
-                                    if (m.target.classList.contains('selected')) {
-                                        tab.classList.remove('selected');
-                                        panel.style.display = 'none';
-                                    }
-                                }
-                            }
-                        });
-
-                        sidebarContent.querySelectorAll('.setting-side-bar-group-content-item').forEach(function(t) {
-                            observer.observe(t, { attributes: true, attributeFilter: ['class'] });
-                        });
-
-                        injected = true;
-                    }
-
-                    function cardStyle() {
-                        return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:24px;margin-bottom:16px;';
-                    }
-
-                    function iconCircleStyle(color) {
-                        return 'width:48px;height:48px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:rgb(247,248,252);';
-                    }
-
-                    function progressBarStyle() {
-                        return 'width:100%;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;margin:16px 0 8px;';
-                    }
-
-                    function progressFillStyle(pct) {
-                        return 'height:100%;width:' + pct + '%;background:rgb(97,92,237);border-radius:3px;transition:width 0.3s cubic-bezier(0.4,0,0.2,1);';
-                    }
-
-                    function btnPrimaryStyle() {
-                        return 'padding:10px 24px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:40px;font-family:inherit;transition:background 0.15s ease,opacity 0.15s ease;';
-                    }
-
-                    function btnSecondaryStyle() {
-                        return 'padding:10px 24px;background:rgba(255,255,255,0.06);color:rgb(247,248,252);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:40px;font-family:inherit;transition:background 0.15s ease;';
-                    }
-
-                    function labelStyle() {
-                        return 'font-size:14px;font-weight:400;color:rgb(247,248,252);';
-                    }
-
-                    function subtextStyle() {
-                        return 'font-size:13px;color:rgba(255,255,255,0.45);';
-                    }
-
-                    async function checkForUpdatesUI() {
-                        var content = document.getElementById('qwen-update-content');
-                        if (!content) return;
-                        content.innerHTML =
-                            '<div style="' + cardStyle() + '">' +
-                                '<div style="display:flex;align-items:center;gap:12px;">' +
-                                    '<div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;color:rgb(247,248,252);">' +
-                                        svgIcon('icon-line-download-02', 16) +
-                                    '</div>' +
-                                    '<div class="qwen-chat-setting-content-item-label">Checking for updates...</div>' +
-                                '</div>' +
-                            '</div>';
-
-                        try {
-                            var info = await window.__TAURI__.core.invoke('get_update_info');
-                            if (info.available) {
-                                content.innerHTML =
-                                    '<div style="' + cardStyle() + '">' +
-                                        '<div style="display:flex;align-items:flex-start;gap:16px;">' +
-                                            '<div style="width:40px;height:40px;border-radius:10px;background:rgba(97,92,237,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
-                                                svgIcon('icon-line-download-02', 20) +
-                                            '</div>' +
-                                            '<div style="flex:1;min-width:0;">' +
-                                                '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">Update Available</div>' +
-                                                '<div style="' + subtextStyle() + '">v' + info.latest_version + ' &middot; you are on v' + info.current_version + '</div>' +
-                                            '</div>' +
-                                        '</div>' +
-                                        (info.release_notes ? '<div style="margin-top:16px;padding:12px 16px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:13px;color:rgba(255,255,255,0.55);line-height:1.6;max-height:140px;overflow-y:auto;">' + info.release_notes.replace(/\n/g, '<br>') + '</div>' : '') +
-                                        '<div style="margin-top:20px;">' +
-                                            '<button id="qwen-install-btn" style="' + btnPrimaryStyle() + '">Download &amp; Install</button>' +
-                                        '</div>' +
-                                    '</div>';
-                                document.getElementById('qwen-install-btn').onclick = async function() {
-                                    startInstallUI();
-                                };
-                            } else {
-                                content.innerHTML =
-                                    '<div style="' + cardStyle() + 'text-align:center;">' +
-                                        '<div style="' + iconCircleStyle('rgba(34,197,94,0.1)') + '">' +
-                                            svgIcon('icon-line-check-01', 24) +
-                                        '</div>' +
-                                        '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">You\'re up to date</div>' +
-                                        '<div style="' + subtextStyle() + 'margin-bottom:16px;">Running v' + info.current_version + '</div>' +
-                                        '<button id="qwen-check-btn" style="' + btnSecondaryStyle() + '">Check for Updates</button>' +
-                                    '</div>';
-                                document.getElementById('qwen-check-btn').onclick = async function() {
-                                    var btn = document.getElementById('qwen-check-btn');
-                                    btn.textContent = 'Checking...';
-                                    btn.disabled = true;
-                                    btn.style.opacity = '0.6';
-                                    await checkForUpdatesUI();
-                                };
-                            }
-                        } catch(e) {
-                            content.innerHTML =
-                                '<div style="' + cardStyle() + '">' +
-                                    '<div style="display:flex;align-items:flex-start;gap:12px;">' +
-                                        '<div style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
-                                            svgIcon('icon-line-alert-circle', 16) +
-                                        '</div>' +
-                                        '<div style="flex:1;">' +
-                                            '<div style="font-size:14px;font-weight:500;color:rgb(239,68,68);margin-bottom:4px;">Could not check for updates</div>' +
-                                            '<div style="' + subtextStyle() + 'margin-bottom:16px;">' + e + '</div>' +
-                                            '<button id="qwen-check-retry-btn" style="' + btnSecondaryStyle() + '">Check Again</button>' +
-                                        '</div>' +
-                                    '</div>' +
-                                '</div>';
-                            document.getElementById('qwen-check-retry-btn').onclick = async function() {
-                                checkForUpdatesUI();
-                            };
-                        }
-                    }
-
-                    async function startInstallUI() {
-                        var content = document.getElementById('qwen-update-content');
-                        if (!content) return;
-
-                        content.innerHTML =
-                            '<div style="' + cardStyle() + '">' +
-                                '<div style="display:flex;align-items:flex-start;gap:16px;">' +
-                                    '<div style="width:40px;height:40px;border-radius:10px;background:rgba(97,92,237,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
-                                        svgIcon('icon-line-download-02', 20) +
-                                    '</div>' +
-                                    '<div style="flex:1;min-width:0;">' +
-                                        '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">Downloading Update</div>' +
-                                        '<div style="' + subtextStyle() + '" id="dl-status">Starting download...</div>' +
-                                    '</div>' +
-                                '</div>' +
-                                '<div style="' + progressBarStyle() + '"><div id="dl-bar" style="' + progressFillStyle(0) + '"></div></div>' +
-                                '<div style="' + subtextStyle() + '" id="dl-bytes">0 / 0 MB</div>' +
-                            '</div>';
-
-                        var unlisten = await window.__TAURI__.event.listen('update-progress', function(event) {
-                            var data = event.payload;
-                            var bar = document.getElementById('dl-bar');
-                            var status = document.getElementById('dl-status');
-                            var bytes = document.getElementById('dl-bytes');
-                            if (bar) bar.style.width = data.progress + '%';
-                            if (status) status.textContent = data.status;
-                            if (bytes && data.downloaded) bytes.textContent = data.downloaded + ' / ' + data.total + ' MB';
-                        });
-
-                        try {
-                            await window.__TAURI__.core.invoke('install_update_with_progress');
-                            unlisten();
-
-                            content.innerHTML =
-                                '<div style="' + cardStyle() + 'text-align:center;">' +
-                                    '<div style="' + iconCircleStyle('rgba(34,197,94,0.1)') + '">' +
-                                        svgIcon('icon-line-check-01', 24) +
-                                    '</div>' +
-                                    '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">Update Installed</div>' +
-                                    '<div style="' + subtextStyle() + 'margin-bottom:20px;">Restart the app to apply changes</div>' +
-                                    '<button id="qwen-restart-btn" style="' + btnPrimaryStyle() + '">Restart Now</button>' +
-                                '</div>';
-                            document.getElementById('qwen-restart-btn').onclick = async function() {
-                                var btn = document.getElementById('qwen-restart-btn');
-                                btn.textContent = 'Restarting...';
-                                btn.disabled = true;
-                                btn.style.opacity = '0.6';
-                                await window.__TAURI__.core.invoke('restart_app');
-                            };
-                        } catch(e) {
-                            unlisten();
-                            content.innerHTML =
-                                '<div style="' + cardStyle() + '">' +
-                                    '<div style="display:flex;align-items:flex-start;gap:12px;">' +
-                                        '<div style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
-                                            svgIcon('icon-line-alert-circle', 16) +
-                                        '</div>' +
-                                        '<div style="flex:1;">' +
-                                            '<div style="font-size:14px;font-weight:500;color:rgb(239,68,68);margin-bottom:4px;">Update failed</div>' +
-                                            '<div style="' + subtextStyle() + 'margin-bottom:16px;">' + e + '</div>' +
-                                            '<button id="qwen-retry-btn" style="' + btnSecondaryStyle() + '">Retry</button>' +
-                                        '</div>' +
-                                    '</div>' +
-                                '</div>';
-                            document.getElementById('qwen-retry-btn').onclick = async function() {
-                                startInstallUI();
-                            };
-                        }
-                    }
-
-                    var checkInterval = setInterval(function() {
-                        if (window.location.href.indexOf('/settings') !== -1) {
-                            injectUpdatesTab();
-                        }
-                    }, 500);
-
-                    window.addEventListener('popstate', function() {
-                        if (window.location.href.indexOf('/settings') !== -1) {
-                            setTimeout(injectUpdatesTab, 300);
-                        }
-                    });
-
-                    if (window.location.href.indexOf('/settings') !== -1) {
-                        setTimeout(injectUpdatesTab, 500);
-                    }
-
-                    // Global update banner
-                    window.__TAURI__.event.listen('update-available', function(event) {
-                        if (document.getElementById('qwen-update-banner')) return;
-                        var data = event.payload;
-                        var style = document.createElement('style');
-                        style.id = 'qwen-banner-styles';
-                        style.textContent = '#qwen-banner-go:hover { background: rgb(117, 112, 257) !important; } #qwen-banner-dismiss:hover { background: rgba(255,255,255,0.08) !important; color: rgb(247,248,252) !important; } @keyframes bannerSlideIn { from { right: -500px; opacity: 0; } to { right: 16px; opacity: 1; } } @keyframes bannerFadeOut { from { right: 16px; opacity: 1; } to { right: -500px; opacity: 0; } } #qwen-update-banner { animation: bannerSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; } #qwen-update-banner.dismissing { animation: bannerFadeOut 0.25s ease forwards; }';
-                        document.head.appendChild(style);
-                        var banner = document.createElement('div');
-                        banner.id = 'qwen-update-banner';
-                        banner.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:14px;font-family:system-ui,ui-sans-serif,-apple-system,BlinkMacSystemFont,Inter,NotoSansHans,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);max-width:480px;width:calc(100% - 32px);';
-                        banner.innerHTML = '<div style="width:32px;height:32px;border-radius:8px;background:rgba(97,92,237,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
-                            svgIcon('icon-line-download-02', 16) +
-                        '</div>' +
-                        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:rgb(247,248,252);margin-bottom:2px;">Update ' + data.version + ' available</div>' +
-                        '<div style="font-size:12px;color:rgba(255,255,255,0.5);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + data.notes.substring(0, 100) + '</div></div>' +
-                        '<div style="display:flex;gap:8px;flex-shrink:0;">' +
-                        '<button id="qwen-banner-go" style="padding:7px 16px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;height:32px;font-family:inherit;transition:background 0.15s ease;">View</button>' +
-                        '<button id="qwen-banner-dismiss" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;color:rgba(255,255,255,0.4);border:none;border-radius:6px;font-size:16px;cursor:pointer;transition:background 0.15s ease, color 0.15s ease;">&#x2715;</button></div>';
-                        document.body.appendChild(banner);
-                        document.getElementById('qwen-banner-go').addEventListener('click', function() {
-                            var b = document.getElementById('qwen-update-banner');
-                            if (b) { b.classList.add('dismissing'); setTimeout(function() { b.remove(); }, 250); }
-                            window.location.href = 'https://chat.qwen.ai/settings';
-                        });
-                        document.getElementById('qwen-banner-dismiss').addEventListener('click', function() {
-                            var b = document.getElementById('qwen-update-banner');
-                            if (b) { b.classList.add('dismissing'); setTimeout(function() { b.remove(); var s = document.getElementById('qwen-banner-styles'); if (s) s.remove(); }, 250); }
-                        });
-                    });
-                })();
-            "##;
-
-            let combined_script = format!("{}\n{}\n{}\n{}", pre_load_script, zoom_script, electron_bridge, settings_script);
+            let combined_script = window::build_init_script();
 
             let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("icons")
@@ -536,7 +86,7 @@ pub fn run() {
             .resizable(true)
             .decorations(true)
             .accept_first_mouse(false)
-            .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 AliDesktop(QWENCHAT/2.2.0)")
+            .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 AliDesktop(QWENCHAT/2.2.3)")
             .initialization_script(&combined_script);
 
             let _main_window = if let Some(icon) = icon {
@@ -546,6 +96,11 @@ pub fn run() {
             };
 
             log::info!("[App] Main window created with electron bridge");
+
+            #[cfg(target_os = "linux")]
+            {
+                setup_gtk_drag_drop(app.handle());
+            }
 
             tray::setup_tray(app.handle())?;
             log::info!("[App] System tray initialized");
@@ -642,7 +197,9 @@ pub fn run() {
 
                                         let win_mi = gtk::MenuItem::with_label("Window");
                                         let win_menu = Menu::new();
+                                        let new_window_mi = gtk::MenuItem::with_label("New Window");
                                         let fullscreen_mi = gtk::MenuItem::with_label("Toggle Fullscreen");
+                                        win_menu.append(&new_window_mi);
                                         win_menu.append(&fullscreen_mi);
                                         win_mi.set_submenu(Some(&win_menu));
                                         menu.append(&win_mi);
@@ -699,6 +256,14 @@ pub fn run() {
                                         fullscreen_mi.connect_activate(move |_| {
                                             let f = w.is_fullscreen().unwrap_or(false);
                                             let _ = w.set_fullscreen(!f);
+                                        });
+
+                                        let ah_new = app_handle.clone();
+                                        new_window_mi.connect_activate(move |_| {
+                                            let a = ah_new.clone();
+                                            tauri::async_runtime::spawn(async move {
+                                                let _ = window::create_new_window(a).await;
+                                            });
                                         });
 
                                         docs_mi.connect_activate(|_| { let _ = open::that("https://chat.qwen.ai"); });
@@ -769,6 +334,8 @@ pub fn run() {
             window::switch_ln,
             window::update_title_bar_for_system_theme,
             window::get_language,
+            window::create_new_window,
+            window::read_clipboard_image,
             events::webview_loaded,
             install_update_with_progress,
             get_update_info,
@@ -783,19 +350,44 @@ pub fn run() {
                 ..
             } = event
             {
+                // Only the main window minimizes to tray; additional windows close normally
                 if label == "main" {
                     api.prevent_close();
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.hide();
                     }
                 }
+                // Other windows (window-1, window-2, etc.) close naturally
             }
         });
+}
+
+/// Compares two semver version strings (e.g. "2.2.3").
+/// Returns:  -1 if a < b,  0 if a == b,  1 if a > b
+/// Handles versions with missing parts (e.g. "2.2" is treated as "2.2.0")
+fn compare_versions(a: &str, b: &str) -> i8 {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split('.')
+            .filter_map(|p| p.parse::<u64>().ok())
+            .collect()
+    };
+    let va = parse(a);
+    let vb = parse(b);
+    let len = std::cmp::max(va.len(), vb.len());
+    for i in 0..len {
+        let pa = *va.get(i).unwrap_or(&0);
+        let pb = *vb.get(i).unwrap_or(&0);
+        if pa < pb { return -1; }
+        if pa > pb { return 1; }
+    }
+    0
 }
 
 async fn check_for_updates(app: &tauri::AppHandle, manual: bool) {
     use tauri_plugin_updater::UpdaterExt;
     use tauri::Emitter;
+
+    let current_version = env!("CARGO_PKG_VERSION");
 
     let updater = match app.updater() {
         Ok(u) => u,
@@ -807,26 +399,53 @@ async fn check_for_updates(app: &tauri::AppHandle, manual: bool) {
 
     match updater.check().await {
         Ok(Some(update)) => {
-            log::info!("[Updater] Update available: {}", update.version);
-            let version = update.version.clone();
-            let notes = update
-                .body
-                .as_deref()
-                .unwrap_or("No release notes")
-                .replace('\n', "\\n")
-                .replace('"', "\\\"");
-
-            let _ = app.emit(
-                "update-available",
-                serde_json::json!({
-                    "version": version,
-                    "notes": notes
-                }),
+            let remote_version = &update.version;
+            log::info!(
+                "[Updater] Remote version: {}, Local version: {}",
+                remote_version,
+                current_version
             );
+
+            // Safety guard: only notify if remote is strictly NEWER
+            // This prevents false positives if latest.json has same or older version
+            if compare_versions(remote_version, current_version) <= 0 {
+                log::info!(
+                    "[Updater] Remote version {} is not newer than local {}. Skipping notification.",
+                    remote_version,
+                    current_version
+                );
+                return;
+            }
+
+            // Only show banner/notification for MANUAL checks
+            // Auto-checks (startup + periodic) just log silently
+            if manual {
+                log::info!("[Updater] Update available (manual check): {}", remote_version);
+                let version = remote_version.clone();
+                let notes = update
+                    .body
+                    .as_deref()
+                    .unwrap_or("No release notes")
+                    .replace('\n', "\\n")
+                    .replace('"', "\\\"");
+
+                let _ = app.emit(
+                    "update-available",
+                    serde_json::json!({
+                        "version": version,
+                        "notes": notes
+                    }),
+                );
+            } else {
+                log::info!(
+                    "[Updater] Update available (auto-check): {}. Banner suppressed — go to Settings > Updates to install.",
+                    remote_version
+                );
+            }
         }
         Ok(None) => {
             if manual {
-                log::info!("[Updater] Already up to date");
+                log::info!("[Updater] Already up to date (v{})", current_version);
             }
         }
         Err(e) => {
@@ -840,6 +459,8 @@ async fn install_update_with_progress(app: tauri::AppHandle) -> Result<(), Strin
     use tauri_plugin_updater::UpdaterExt;
     use tauri::Emitter;
 
+    let current_version = env!("CARGO_PKG_VERSION");
+
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater
         .check()
@@ -847,7 +468,15 @@ async fn install_update_with_progress(app: tauri::AppHandle) -> Result<(), Strin
         .map_err(|e| e.to_string())?
         .ok_or("No update available")?;
 
-    log::info!("[Updater] Downloading update {}", update.version);
+    // Safety guard: refuse to install if remote is not newer
+    if compare_versions(&update.version, current_version) <= 0 {
+        return Err(format!(
+            "Remote version {} is not newer than current version {}. You're already up to date!",
+            update.version, current_version
+        ));
+    }
+
+    log::info!("[Updater] Downloading update {} → {}", current_version, update.version);
 
     let mut downloaded_bytes = 0u64;
     let mut total_bytes = 0u64;
@@ -923,16 +552,34 @@ async fn get_update_info(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
 
     let updater = app.updater().map_err(|e| e.to_string())?;
     match updater.check().await {
-        Ok(Some(update)) => Ok(UpdateInfo {
-            current_version: current_version.clone(),
-            available: true,
-            latest_version: update.version.clone(),
-            release_notes: update
-                .body
-                .as_deref()
-                .unwrap_or("No release notes")
-                .to_string(),
-        }),
+        Ok(Some(update)) => {
+            let remote_version = &update.version;
+            // Safety guard: only report as available if remote is strictly NEWER
+            if compare_versions(remote_version, &current_version) <= 0 {
+                log::info!(
+                    "[Updater] get_update_info: Remote {} is not newer than local {}. Reporting up-to-date.",
+                    remote_version,
+                    current_version
+                );
+                Ok(UpdateInfo {
+                    current_version: current_version.clone(),
+                    available: false,
+                    latest_version: current_version,
+                    release_notes: String::new(),
+                })
+            } else {
+                Ok(UpdateInfo {
+                    current_version: current_version.clone(),
+                    available: true,
+                    latest_version: update.version.clone(),
+                    release_notes: update
+                        .body
+                        .as_deref()
+                        .unwrap_or("No release notes")
+                        .to_string(),
+                })
+            }
+        }
         Ok(None) => Ok(UpdateInfo {
             current_version: current_version.clone(),
             available: false,
