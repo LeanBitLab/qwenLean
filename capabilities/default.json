@@ -28,6 +28,11 @@
     "mcp-client-update-config",
     "window-commands",
     "settings-commands",
-    "mcp-bridge:default"
+    "mcp-bridge:default",
+    "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-image",
+    "clipboard-manager:allow-write-image"
   ]
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Qwen Studio",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "identifier": "com.qwen.studio",
   "build": {
     "frontendDist": "./dist"
@@ -14,6 +14,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "resources": [
       "mcp-proxy-server.js"

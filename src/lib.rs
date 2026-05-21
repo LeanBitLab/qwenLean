@@ -23,8 +23,9 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_deep_link::init())
+.plugin(tauri_plugin_fs::init())
+.plugin(tauri_plugin_clipboard_manager::init())
+.plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             log::info!("[SingleInstance] Second instance launched with args: {:?}", args);
             if let Some(url) = args.iter().find(|a| a.starts_with("qwen://")) {
@@ -62,23 +63,140 @@ pub fn run() {
                         localStorage.setItem("LOCAL_MCP_SERVER", JSON.stringify([{
                             id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                             name: "qwen-core",
-                            description: "Core MCP server with 28 tools for file operations, search, bash execution, time management, and autonomous agent capabilities. Provides filesystem access, git operations, and sequential thinking for AI-assisted development.",
+                            description: "Essential tools for file operations, search, and bash execution.",
                             type: "stdio",
-                            params: { command: "npx", args: ["-y", "@youssefvdel/qwen-core"] },
+                            params: { command: "npx", args: ["-y", "qwen-core"] },
                             enabled: true,
                             default: false,
                             connectionStatus: "available",
                             errorMessage: "",
                             tools: []
                         }]));
+                        
+                        // Enable paste via Tauri clipboard plugin (like Electron)
+                        document.addEventListener('paste', async (e) => {
+                            if (window.__TAURI__ && window.__TAURI__.clipboardManager) {
+                                e.preventDefault();
+                                try {
+                                    // Try to read image first
+                                    let pastedImage = null;
+                                    try {
+                                        console.log('Trying to read image from clipboard...');
+                                        const imageData = await window.__TAURI__.clipboardManager.readImage();
+                                        console.log('Image data:', imageData);
+                                        if (imageData) {
+                                            const rgba = await imageData.rgba();
+                                            const width = await imageData.width();
+                                            const height = await imageData.height();
+                                            console.log('Image size:', width, height);
+                                            const canvas = document.createElement('canvas');
+                                            canvas.width = width;
+                                            canvas.height = height;
+                                            const ctx = canvas.getContext('2d');
+                                            const imgData = new ImageData(new Uint8ClampedArray(rgba), width, height);
+                                            ctx.putImageData(imgData, 0, 0);
+                                            pastedImage = canvas.toDataURL('image/png');
+                                            console.log('Image converted to data URL');
+                                        }
+                                    } catch(imgErr) {
+                                        console.log('No image in clipboard or error:', imgErr.message);
+                                    }
+                                    
+                                    if (pastedImage) {
+                                        const target = document.activeElement;
+                                        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+                                            console.log('Cannot paste image in text input');
+                                        } else {
+                                            const img = document.createElement('img');
+                                            img.src = pastedImage;
+                                            img.style.maxWidth = '300px';
+                                            img.style.maxHeight = '200px';
+                                            target?.appendChild?.(img) || document.body.appendChild(img);
+                                        }
+                                    } else {
+                                        // Paste text
+                                        const text = await window.__TAURI__.clipboardManager.readText();
+                                        if (!text) return;
+                                        const input = document.activeElement;
+                                        if (input && (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA' || input.isContentEditable)) {
+                                            const start = input.selectionStart || 0;
+                                            const end = input.selectionEnd || 0;
+                                            const val = input.value || input.innerText || '';
+                                            const newVal = val.substring(0, start) + text + val.substring(end);
+                                            if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
+                                                input.value = newVal;
+                                                input.selectionStart = input.selectionEnd = start + text.length;
+                                            } else {
+                                                input.innerText = newVal;
+                                            }
+                                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                                        } else {
+                                            document.execCommand('insertText', false, text);
+                                        }
+                                    }
+                                } catch(err) {
+                                    console.log('Paste error:', err);
+                                }
+                            }
+                        }, true);
+                        
+                        
                     } catch(e) {}
                 })();
             "#;
+
+            let zoom_script = r##"
+                (function() {
+                    let zoomLevel = 1.0;
+                    const ZOOM_STEP = 0.1;
+                    const MIN_ZOOM = 0.5;
+                    const MAX_ZOOM = 2.0;
+
+                    // Ctrl + mouse wheel zoom
+                    document.addEventListener('wheel', function(e) {
+                        if (e.ctrlKey) {
+                            e.preventDefault();
+                            if (e.deltaY < 0) {
+                                zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
+                            } else {
+                                zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
+                            }
+                            document.body.style.zoom = zoomLevel;
+                        }
+                    }, { passive: false, capture: true });
+
+                    // Ctrl + + (zoom in)
+                    document.addEventListener('keydown', function(e) {
+                        if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
+                            e.preventDefault();
+                            zoomLevel = Math.min(MAX_ZOOM, zoomLevel + ZOOM_STEP);
+                            document.body.style.zoom = zoomLevel;
+                        }
+                        // Ctrl + - (zoom out)
+                        if (e.ctrlKey && e.key === '-') {
+                            e.preventDefault();
+                            zoomLevel = Math.max(MIN_ZOOM, zoomLevel - ZOOM_STEP);
+                            document.body.style.zoom = zoomLevel;
+                        }
+                        // Ctrl + 0 (reset zoom)
+                        if (e.ctrlKey && (e.key === '0' || e.key === ')')) {
+                            e.preventDefault();
+                            zoomLevel = 1.0;
+                            document.body.style.zoom = zoomLevel;
+                        }
+                    });
+                })();
+            "##;
 
             // Inject settings updates tab
             let settings_script = r##"
                 (function() {
                     var injected = false;
+
+                    function svgIcon(iconId, size) {
+                        size = size || 20;
+                        return '<svg width="' + size + '" height="' + size + '" fill="currentColor" aria-hidden="true" focusable="false" style="flex-shrink:0;color:rgb(247,248,252);"><use xlink:href="#' + iconId + '"></use></svg>';
+                    }
 
                     function injectUpdatesTab() {
                         if (injected) return;
@@ -100,7 +218,7 @@ pub fn run() {
                         tab.id = 'qwen-updates-tab';
                         tab.className = 'setting-side-bar-group-content-item';
                         tab.setAttribute('data-spm-anchor-id', '');
-                        tab.innerHTML = '<span role="img" class="anticon"><svg width="1em" height="1em" fill="currentColor" aria-hidden="true" focusable="false" class=""><use xlink:href="#icon-line-download-02"></use></svg></span><div class="setting-side-bar-group-content-item-title" data-spm-anchor-id="">Updates</div>';
+                        tab.innerHTML = '<span role="img" class="anticon">' + svgIcon('icon-line-download-02', 14) + '</span><div class="setting-side-bar-group-content-item-title" data-spm-anchor-id="">Updates</div>';
 
                         if (aboutTab) {
                             sidebarContent.insertBefore(tab, aboutTab);
@@ -116,7 +234,7 @@ pub fn run() {
                             '<div class="setting-content-title">' +
                                 '<div class="setting-content-title-title">Updates</div>' +
                             '</div>' +
-                            '<div id="qwen-update-content" style="max-width:500px;"></div>';
+                            '<div id="qwen-update-content" style="max-width:520px;"></div>';
 
                         var mainContent = document.querySelector('.setting-content');
                         if (mainContent) {
@@ -162,23 +280,35 @@ pub fn run() {
                     }
 
                     function cardStyle() {
-                        return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;margin-bottom:16px;';
+                        return 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:24px;margin-bottom:16px;';
+                    }
+
+                    function iconCircleStyle(color) {
+                        return 'width:48px;height:48px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:rgb(247,248,252);';
                     }
 
                     function progressBarStyle() {
-                        return 'width:100%;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;margin:12px 0;';
+                        return 'width:100%;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;margin:16px 0 8px;';
                     }
 
                     function progressFillStyle(pct) {
-                        return 'height:100%;width:' + pct + '%;background:rgb(97,92,237);border-radius:2px;transition:width 0.3s ease;';
+                        return 'height:100%;width:' + pct + '%;background:rgb(97,92,237);border-radius:3px;transition:width 0.3s cubic-bezier(0.4,0,0.2,1);';
                     }
 
-                    function btnStyle() {
-                        return 'padding:8px 20px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:36px;font-family:inherit;transition:background 0.15s ease;';
+                    function btnPrimaryStyle() {
+                        return 'padding:10px 24px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:40px;font-family:inherit;transition:background 0.15s ease,opacity 0.15s ease;';
                     }
 
                     function btnSecondaryStyle() {
-                        return 'padding:8px 20px;background:transparent;color:rgb(247,248,252);border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:36px;font-family:inherit;transition:background 0.15s ease;';
+                        return 'padding:10px 24px;background:rgba(255,255,255,0.06);color:rgb(247,248,252);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;height:40px;font-family:inherit;transition:background 0.15s ease;';
+                    }
+
+                    function labelStyle() {
+                        return 'font-size:14px;font-weight:400;color:rgb(247,248,252);';
+                    }
+
+                    function subtextStyle() {
+                        return 'font-size:13px;color:rgba(255,255,255,0.45);';
                     }
 
                     async function checkForUpdatesUI() {
@@ -186,7 +316,12 @@ pub fn run() {
                         if (!content) return;
                         content.innerHTML =
                             '<div style="' + cardStyle() + '">' +
-                                '<div class="qwen-chat-setting-content-item-label">Checking for updates...</div>' +
+                                '<div style="display:flex;align-items:center;gap:12px;">' +
+                                    '<div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;color:rgb(247,248,252);">' +
+                                        svgIcon('icon-line-download-02', 16) +
+                                    '</div>' +
+                                    '<div class="qwen-chat-setting-content-item-label">Checking for updates...</div>' +
+                                '</div>' +
                             '</div>';
 
                         try {
@@ -194,14 +329,18 @@ pub fn run() {
                             if (info.available) {
                                 content.innerHTML =
                                     '<div style="' + cardStyle() + '">' +
-                                        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
-                                            '<span style="font-size:20px;">&#x2b07;</span>' +
-                                            '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;">Update Available</div>' +
+                                        '<div style="display:flex;align-items:flex-start;gap:16px;">' +
+                                            '<div style="width:40px;height:40px;border-radius:10px;background:rgba(97,92,237,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
+                                                svgIcon('icon-line-download-02', 20) +
+                                            '</div>' +
+                                            '<div style="flex:1;min-width:0;">' +
+                                                '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">Update Available</div>' +
+                                                '<div style="' + subtextStyle() + '">v' + info.latest_version + ' &middot; you are on v' + info.current_version + '</div>' +
+                                            '</div>' +
                                         '</div>' +
-                                        '<div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:16px;">v' + info.latest_version + ' &mdash; you are on v' + info.current_version + '</div>' +
-                                        (info.release_notes ? '<div style="background:rgba(255,255,255,0.04);padding:12px;border-radius:8px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.6);max-height:120px;overflow-y:auto;line-height:1.5;">' + info.release_notes.replace(/\n/g, '<br>') + '</div>' : '') +
-                                        '<div style="display:flex;gap:8px;">' +
-                                            '<button id="qwen-install-btn" style="' + btnStyle() + '">Download &amp; Install</button>' +
+                                        (info.release_notes ? '<div style="margin-top:16px;padding:12px 16px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:13px;color:rgba(255,255,255,0.55);line-height:1.6;max-height:140px;overflow-y:auto;">' + info.release_notes.replace(/\n/g, '<br>') + '</div>' : '') +
+                                        '<div style="margin-top:20px;">' +
+                                            '<button id="qwen-install-btn" style="' + btnPrimaryStyle() + '">Download &amp; Install</button>' +
                                         '</div>' +
                                     '</div>';
                                 document.getElementById('qwen-install-btn').onclick = async function() {
@@ -210,16 +349,38 @@ pub fn run() {
                             } else {
                                 content.innerHTML =
                                     '<div style="' + cardStyle() + 'text-align:center;">' +
-                                        '<div style="font-size:32px;margin-bottom:8px;">&#x2705;</div>' +
-                                        '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;margin-bottom:4px;">You\'re up to date</div>' +
-                                        '<div style="color:rgba(255,255,255,0.5);font-size:13px;">Running v' + info.current_version + '</div>' +
+                                        '<div style="' + iconCircleStyle('rgba(34,197,94,0.1)') + '">' +
+                                            svgIcon('icon-line-check-01', 24) +
+                                        '</div>' +
+                                        '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">You\'re up to date</div>' +
+                                        '<div style="' + subtextStyle() + 'margin-bottom:16px;">Running v' + info.current_version + '</div>' +
+                                        '<button id="qwen-check-btn" style="' + btnSecondaryStyle() + '">Check for Updates</button>' +
                                     '</div>';
+                                document.getElementById('qwen-check-btn').onclick = async function() {
+                                    var btn = document.getElementById('qwen-check-btn');
+                                    btn.textContent = 'Checking...';
+                                    btn.disabled = true;
+                                    btn.style.opacity = '0.6';
+                                    await checkForUpdatesUI();
+                                };
                             }
                         } catch(e) {
                             content.innerHTML =
                                 '<div style="' + cardStyle() + '">' +
-                                    '<div style="color:rgb(239,68,68);font-size:13px;">Could not check for updates: ' + e + '</div>' +
+                                    '<div style="display:flex;align-items:flex-start;gap:12px;">' +
+                                        '<div style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
+                                            svgIcon('icon-line-alert-circle', 16) +
+                                        '</div>' +
+                                        '<div style="flex:1;">' +
+                                            '<div style="font-size:14px;font-weight:500;color:rgb(239,68,68);margin-bottom:4px;">Could not check for updates</div>' +
+                                            '<div style="' + subtextStyle() + 'margin-bottom:16px;">' + e + '</div>' +
+                                            '<button id="qwen-check-retry-btn" style="' + btnSecondaryStyle() + '">Check Again</button>' +
+                                        '</div>' +
+                                    '</div>' +
                                 '</div>';
+                            document.getElementById('qwen-check-retry-btn').onclick = async function() {
+                                checkForUpdatesUI();
+                            };
                         }
                     }
 
@@ -229,16 +390,19 @@ pub fn run() {
 
                         content.innerHTML =
                             '<div style="' + cardStyle() + '">' +
-                                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
-                                    '<span style="font-size:20px;">&#x2b07;</span>' +
-                                    '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;">Downloading Update</div>' +
+                                '<div style="display:flex;align-items:flex-start;gap:16px;">' +
+                                    '<div style="width:40px;height:40px;border-radius:10px;background:rgba(97,92,237,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
+                                        svgIcon('icon-line-download-02', 20) +
+                                    '</div>' +
+                                    '<div style="flex:1;min-width:0;">' +
+                                        '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">Downloading Update</div>' +
+                                        '<div style="' + subtextStyle() + '" id="dl-status">Starting download...</div>' +
+                                    '</div>' +
                                 '</div>' +
-                                '<div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:4px;" id="dl-status">Starting download...</div>' +
                                 '<div style="' + progressBarStyle() + '"><div id="dl-bar" style="' + progressFillStyle(0) + '"></div></div>' +
-                                '<div style="color:rgba(255,255,255,0.4);font-size:12px;" id="dl-bytes">0 / 0 MB</div>' +
+                                '<div style="' + subtextStyle() + '" id="dl-bytes">0 / 0 MB</div>' +
                             '</div>';
 
-                        // Listen for progress events
                         var unlisten = await window.__TAURI__.event.listen('update-progress', function(event) {
                             var data = event.payload;
                             var bar = document.getElementById('dl-bar');
@@ -253,26 +417,36 @@ pub fn run() {
                             await window.__TAURI__.core.invoke('install_update_with_progress');
                             unlisten();
 
-                            // Install complete — show restart
                             content.innerHTML =
                                 '<div style="' + cardStyle() + 'text-align:center;">' +
-                                    '<div style="font-size:32px;margin-bottom:8px;">&#x2705;</div>' +
-                                    '<div class="qwen-chat-setting-content-item-label" style="font-size:16px;font-weight:600;margin-bottom:4px;">Update Installed</div>' +
-                                    '<div style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:16px;">Restart the app to apply changes</div>' +
-                                    '<button id="qwen-restart-btn" style="' + btnStyle() + '">Restart Now</button>' +
+                                    '<div style="' + iconCircleStyle('rgba(34,197,94,0.1)') + '">' +
+                                        svgIcon('icon-line-check-01', 24) +
+                                    '</div>' +
+                                    '<div class="qwen-chat-setting-content-item-label" style="font-size:15px;font-weight:600;margin-bottom:4px;">Update Installed</div>' +
+                                    '<div style="' + subtextStyle() + 'margin-bottom:20px;">Restart the app to apply changes</div>' +
+                                    '<button id="qwen-restart-btn" style="' + btnPrimaryStyle() + '">Restart Now</button>' +
                                 '</div>';
                             document.getElementById('qwen-restart-btn').onclick = async function() {
                                 var btn = document.getElementById('qwen-restart-btn');
                                 btn.textContent = 'Restarting...';
                                 btn.disabled = true;
+                                btn.style.opacity = '0.6';
                                 await window.__TAURI__.core.invoke('restart_app');
                             };
                         } catch(e) {
                             unlisten();
                             content.innerHTML =
                                 '<div style="' + cardStyle() + '">' +
-                                    '<div style="color:rgb(239,68,68);font-size:13px;">Update failed: ' + e + '</div>' +
-                                    '<button id="qwen-retry-btn" style="' + btnStyle() + 'margin-top:12px;">Retry</button>' +
+                                    '<div style="display:flex;align-items:flex-start;gap:12px;">' +
+                                        '<div style="width:32px;height:32px;border-radius:8px;background:rgba(239,68,68,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
+                                            svgIcon('icon-line-alert-circle', 16) +
+                                        '</div>' +
+                                        '<div style="flex:1;">' +
+                                            '<div style="font-size:14px;font-weight:500;color:rgb(239,68,68);margin-bottom:4px;">Update failed</div>' +
+                                            '<div style="' + subtextStyle() + 'margin-bottom:16px;">' + e + '</div>' +
+                                            '<button id="qwen-retry-btn" style="' + btnSecondaryStyle() + '">Retry</button>' +
+                                        '</div>' +
+                                    '</div>' +
                                 '</div>';
                             document.getElementById('qwen-retry-btn').onclick = async function() {
                                 startInstallUI();
@@ -296,39 +470,40 @@ pub fn run() {
                         setTimeout(injectUpdatesTab, 500);
                     }
 
-                    // Global update banner — listens for update-available event
+                    // Global update banner
                     window.__TAURI__.event.listen('update-available', function(event) {
                         if (document.getElementById('qwen-update-banner')) return;
                         var data = event.payload;
                         var style = document.createElement('style');
                         style.id = 'qwen-banner-styles';
-                        style.textContent = '#qwen-banner-go:hover { background: rgb(117, 112, 257) !important; } #qwen-banner-dismiss:hover { background: rgba(255,255,255,0.08) !important; color: rgb(247,248,252) !important; }';
+                        style.textContent = '#qwen-banner-go:hover { background: rgb(117, 112, 257) !important; } #qwen-banner-dismiss:hover { background: rgba(255,255,255,0.08) !important; color: rgb(247,248,252) !important; } @keyframes bannerSlideIn { from { right: -500px; opacity: 0; } to { right: 16px; opacity: 1; } } @keyframes bannerFadeOut { from { right: 16px; opacity: 1; } to { right: -500px; opacity: 0; } } #qwen-update-banner { animation: bannerSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; } #qwen-update-banner.dismissing { animation: bannerFadeOut 0.25s ease forwards; }';
                         document.head.appendChild(style);
                         var banner = document.createElement('div');
                         banner.id = 'qwen-update-banner';
-                        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:rgb(46,46,51);border-bottom:1px solid rgba(255,255,255,0.08);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-family:system-ui,ui-sans-serif,-apple-system,BlinkMacSystemFont,Inter,NotoSansHans,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
-                        banner.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">' +
-                            '<span style="font-size:16px;color:rgb(97,92,237);flex-shrink:0;">&#x2b07;</span>' +
-                            '<div style="min-width:0;"><div style="font-size:13px;font-weight:500;color:rgb(247,248,252);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Update ' + data.version + ' available</div>' +
-                            '<div style="font-size:11px;color:rgba(255,255,255,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + data.notes.substring(0, 80) + '...</div></div></div>' +
-                            '<div style="display:flex;gap:6px;flex-shrink:0;">' +
-                            '<button id="qwen-banner-go" style="padding:5px 14px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:6px;font-size:12px;cursor:pointer;height:26px;font-family:inherit;transition:background 0.15s ease;">Go to Settings</button>' +
-                            '<button id="qwen-banner-dismiss" style="padding:5px 10px;background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:12px;cursor:pointer;height:26px;transition:background 0.15s ease, color 0.15s ease;">&#x2715;</button></div>';
+                        banner.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;background:rgb(46,46,51);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:14px;font-family:system-ui,ui-sans-serif,-apple-system,BlinkMacSystemFont,Inter,NotoSansHans,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);max-width:480px;width:calc(100% - 32px);';
+                        banner.innerHTML = '<div style="width:32px;height:32px;border-radius:8px;background:rgba(97,92,237,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgb(247,248,252);">' +
+                            svgIcon('icon-line-download-02', 16) +
+                        '</div>' +
+                        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;color:rgb(247,248,252);margin-bottom:2px;">Update ' + data.version + ' available</div>' +
+                        '<div style="font-size:12px;color:rgba(255,255,255,0.5);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + data.notes.substring(0, 100) + '</div></div>' +
+                        '<div style="display:flex;gap:8px;flex-shrink:0;">' +
+                        '<button id="qwen-banner-go" style="padding:7px 16px;background:rgb(97,92,237);color:rgb(247,248,252);border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;height:32px;font-family:inherit;transition:background 0.15s ease;">View</button>' +
+                        '<button id="qwen-banner-dismiss" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;color:rgba(255,255,255,0.4);border:none;border-radius:6px;font-size:16px;cursor:pointer;transition:background 0.15s ease, color 0.15s ease;">&#x2715;</button></div>';
                         document.body.appendChild(banner);
                         document.getElementById('qwen-banner-go').addEventListener('click', function() {
+                            var b = document.getElementById('qwen-update-banner');
+                            if (b) { b.classList.add('dismissing'); setTimeout(function() { b.remove(); }, 250); }
                             window.location.href = 'https://chat.qwen.ai/settings';
                         });
                         document.getElementById('qwen-banner-dismiss').addEventListener('click', function() {
                             var b = document.getElementById('qwen-update-banner');
-                            if (b) b.remove();
-                            var s = document.getElementById('qwen-banner-styles');
-                            if (s) s.remove();
+                            if (b) { b.classList.add('dismissing'); setTimeout(function() { b.remove(); var s = document.getElementById('qwen-banner-styles'); if (s) s.remove(); }, 250); }
                         });
                     });
                 })();
             "##;
 
-            let combined_script = format!("{}\n{}\n{}", pre_load_script, electron_bridge, settings_script);
+            let combined_script = format!("{}\n{}\n{}\n{}", pre_load_script, zoom_script, electron_bridge, settings_script);
 
             let icon_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("icons")

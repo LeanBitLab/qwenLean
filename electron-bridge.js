@@ -16,6 +16,26 @@
     const event = window.__TAURI__.event;
     const eventListeners = {};
 
+// Pass through drag/drop events to let Qwen's own React DnD handle it
+      (function setupDragDropPassThrough() {
+        console.log('[ElectronBridge] Setting up drag-drop pass-through');
+        
+        // Key: preventDefault on dragover is required to allow dropping - same as web app
+        function preventDefaultHandler(e) {
+          e.preventDefault();
+          if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = 'copy';
+          }
+        }
+        
+        // Use capture phase to pass events through to web app
+        document.addEventListener('dragenter', preventDefaultHandler, true);
+        document.addEventListener('dragover', preventDefaultHandler, true);
+        document.addEventListener('drop', preventDefaultHandler, true);
+        
+        console.log('[ElectronBridge] Drag-drop pass-through ready');
+      })();
+
     event.listen('event_from_main', function(e) {
       var data = e.payload;
       var type = data.type;

@@ -1,7 +1,21 @@
 # Qwen Studio Architecture
 
-> **Version**: 2.3.0 | **Last Updated**: 2026-05-19  
+> **Version**: 2.2.0 | **Last Updated**: 2026-05-20  
 > **Stack**: Tauri v2 + WebKitGTK + Rust
+
+## Migration from Electron (v2.2.0)
+
+**v2.2.0** migrates from Electron to Tauri v2 for:
+- **95% smaller binary**: ~6MB (Tauri) vs ~150MB (Electron)
+- **Better performance**: Rust backend, native WebKitGTK WebView
+- **Native Linux integration**: System tray, GTK menu, deep linking
+- **Improved security**: Sandboxed WebView, no Node.js in renderer
+
+**Key changes:**
+- Main process: Node.js → Rust
+- WebView: Chromium → WebKitGTK
+- IPC: Electron IPC → Tauri commands (`invoke`)
+- Bundling: electron-builder → Tauri bundler (RPM/DEB/AppImage)
 
 ## System Overview
 
@@ -98,83 +112,96 @@ sequenceDiagram
 ```mermaid
 mindmap
   root((Qwen Studio))
-    Main Process
-      index.ts
+    Rust Backend
+      lib.rs
         ::icon(fa fa-flag)
         Bootstrap
-        MCP Proxy Owner
-        Menu Builder
-      window-manager.ts
+        WebView Setup
+        Update Commands
+        Zoom Controls
+      window.rs
         ::icon(fa fa-window)
-        BrowserWindow
-        parent_id Recovery
-        Tray Management
-      ipc-handlers.ts
-        ::icon(fa fa-bridge)
-        15 IPC Handlers
-        MCP Connect/Close
-        Theme/Language
-      mcp-config.ts
+        WebviewWindow
+        Deep Link Handling
+        Theme Switching
+      mcp.rs
         ::icon(fa fa-cog)
-        Path Resolution
-        Runtime Adaptation
-    MCP Layer
-      proxy.ts
+        MCP Server State
+        Config Sync
+      tray.rs
+        ::icon(fa fa-tray)
+        System Tray
+        Menu Items
+      menu.rs
+        ::icon(fa fa-bars)
+        GTK HeaderBar
+        Linux Menu
+    Web Injection
+      electron-bridge.js
+        ::icon(fa fa-bridge)
+        window.__TAURI__ shim
+        Event Forwarding
+      mcp-bridge.mjs
         ::icon(fa fa-exchange)
-        Multi-Server Manager
-        Client Caching
-      server-client.ts
-        ::icon(fa fa-plug)
+        MCP Proxy Server
         stdio Transport
-        JSON-RPC Protocol
-    Renderer
-      WebView
-        ::icon(fa fa-globe)
-        chat.qwen.ai
-        Conversation State
-      Preload
-        ::icon(fa fa-shield)
-        contextBridge
-        Security Boundary
-    External
+    MCP Servers
       qwen-core
         ::icon(fa fa-robot)
-        40 Tools
+        28 Tools
         Skills System
+      fetch
+        ::icon(fa fa-globe)
+        Web Access
+      filesystem
+        ::icon(fa fa-file)
+        File Operations
+    External
       Settings
         ::icon(fa fa-file)
+        ~/.config/qwen-studio/
         MCP Config
-        App Preferences
+      IndexedDB
+        ::icon(fa fa-database)
+        Conversation State
+        chat.qwen.ai
 ```
 
 ## Process Architecture
 
 ```mermaid
 flowchart LR
-    subgraph P1["Process 1: Main (Node.js)"]
-        M1[Electron Main]
-        M2[MCP Proxy]
-        M3[IPC Handlers]
+    subgraph P1["Rust Backend (Main Process)"]
+        M1[WebviewWindow]
+        M2[MCP Manager]
+        M3[Tauri Commands]
     end
 
-    subgraph P2["Process 2: Renderer (Chromium)"]
-        R1[WebView - chat.qwen.ai]
-        R2[Preload Script]
+    subgraph P2["Renderer (WebKitGTK)"]
+        R1[chat.qwen.ai WebView]
+        R2[electron-bridge.js]
+        R3[Settings Tab Injection]
     end
 
-    subgraph P3["Process 3-N: MCP Servers"]
+    subgraph P3["MCP Servers (stdio)"]
         S1[qwen-core (Bun)]
-        S2[fetch (UV/Python)]
-        S3[filesystem (UV/Python)]
+        S2[fetch (Node.js)]
+        S3[filesystem (Node.js)]
     end
 
-    P1 <-->|IPC Bridge| P2
+    P1 <-->|Tauri Commands| P2
     P1 <-->|stdio JSON-RPC| P3
     
     style P1 fill:#e1f5ff
     style P2 fill:#fff4e1
     style P3 fill:#e8f5e9
 ```
+
+**Changes from Electron:**
+- Single Rust process replaces Node.js main process
+- WebKitGTK replaces Chromium renderer
+- stdio transport unchanged for MCP servers
+- IPC: `ipcRenderer.invoke()` → `window.__TAURI__.core.invoke()`
 
 ## MCP Server Lifecycle
 
@@ -207,57 +234,69 @@ stateDiagram-v2
 graph TD
     A[qwen-studio/] --> B[src/]
     A --> C[qwen-core/]
-    A --> D[resources/]
-    A --> E[docs/]
+    A --> D[docs/]
+    A --> E[Config Files]
 
-    B --> B1[main/]
-    B --> B2[mcp/]
-    B --> B3[preload/]
-    B --> B4[shared/]
-
-    B1 --> B1a[index.ts - Entry]
-    B1 --> B1b[window-manager.ts - WebView]
-    B1 --> B1c[ipc-handlers.ts - IPC]
-    B1 --> B1d[mcp-config.ts - Paths]
-    B1 --> B1e[skills-manager.ts]
-    B1 --> B1f[app-lifecycle.ts]
-
-    B2 --> B2a[proxy.ts - Multi-server]
-    B2 --> B2b[server-client.ts - stdio]
-
-    B3 --> B3a[index.ts - contextBridge]
-
-    B4 --> B4a[types.ts - TypeScript interfaces]
+    B --> B1[lib.rs - Bootstrap]
+    B --> B2[main.rs - Entry]
+    B --> B3[window.rs - Window Mgmt]
+    B --> B4[mcp.rs - MCP State]
+    B --> B5[tray.rs - System Tray]
+    B --> B6[menu.rs - GTK Menu]
+    B --> B7[dialogs.rs - Native Dialogs]
+    B --> B8[events.rs - Event Forwarding]
+    B --> B9[settings.rs - Settings Storage]
 
     C --> C1[src/index.ts - MCP Server]
     C --> C2[skills/ - Agent Skills]
     C --> C3[package.json]
 
-    D --> D1[bun/linux-x64/ - Runtime]
-    D --> D2[uv/linux-x64/ - Python]
+    D --> D1[ARCHITECTURE.md]
+    D --> D2[AGENT_BRAIN.md]
+    D --> D3[SECURITY_AUDIT.md]
 
-    E --> E1[ARCHITECTURE.md]
-    E --> E2[PARENT_ID_ERROR_STUDY.md]
+    E --> E1[tauri.conf.json]
+    E --> E2[Cargo.toml]
+    E --> E3[electron-bridge.js]
+    E --> E4[mcp-bridge.mjs]
 ```
 
-## IPC Channel Map
+## Tauri Command Map
 
-| Channel | Direction | Handler | Purpose |
-|---------|-----------|---------|---------|
-| `get_app_version` | Renderer → Main | `ipc-handlers.ts:41` | Get app version |
-| `get_platform_info` | Renderer → Main | `ipc-handlers.ts:45` | Get OS/arch |
-| `open_devtool` | Renderer → Main | `ipc-handlers.ts:56` | Open DevTools |
-| `mcp_client_connect` | Renderer → Main | `ipc-handlers.ts:121` | Connect MCP servers |
-| `mcp_client_tool_list` | Renderer → Main | `ipc-handlers.ts:165` | List available tools |
-| `mcp_client_tool_call` | Renderer → Main | `ipc-handlers.ts:186` | Execute tool |
-| `mcp_client_update_config` | Renderer → Main | `ipc-handlers.ts:203` | Update MCP config |
-| `switch_theme` | Renderer → Main | `ipc-handlers.ts:278` | Toggle dark/light |
-| `event_to_main` | Renderer → Main | `ipc-handlers.ts:305` | Custom events |
-| `event_from_main` | Main → Renderer | `preload.ts:97` | Event broadcast |
+| Command | Handler | Purpose |
+|---------|---------|---------|
+| `get_update_info` | `lib.rs:804` | Check for updates |
+| `install_update_with_progress` | `lib.rs:724` | Download + install |
+| `restart_app` | `lib.rs:790` | Restart after update |
+| `mcp_client_update_config` | `mcp.rs` | Update MCP config |
+| `get_setting` | `settings.rs` | Read settings |
+| `set_setting` | `settings.rs` | Write settings |
+| `switch_theme` | `window.rs` | Toggle dark/light |
+| `switch_ln` | `window.rs` | Change language |
+| `webview_loaded` | `events.rs` | WebView ready event |
+
+**IPC Migration:**
+- Electron: `ipcRenderer.invoke('channel', args)`
+- Tauri: `window.__TAURI__.core.invoke('command', args)`
 
 ## Key Design Decisions
 
-### 1. Electron Wrapper Pattern
+### 1. Tauri v2 Migration (v2.2.0)
+**Decision:** Migrate from Electron to Tauri v2 (Rust + WebKitGTK)
+
+**Why:**
+- 95% smaller binary (~6MB vs ~150MB)
+- Better performance with Rust backend
+- Native Linux system tray and menu
+- Improved security (sandboxed WebView)
+- Lower memory footprint
+
+**Trade-offs:**
+- WebKitGTK instead of Chromium (minor rendering differences)
+- Rust learning curve for future contributors
+- AppImage bundling challenges (linuxdeploy issues)
+
+### 2. WebView Wrapper Pattern
 **Decision:** Wrap chat.qwen.ai instead of building native chat UI
 
 **Why:**
@@ -267,17 +306,17 @@ graph TD
 
 **Trade-off:** Cannot modify chat UI behavior; dependent on web app stability
 
-### 2. MCP Proxy Architecture
-**Decision:** Single `McpProxy` class managing multiple server connections
+### 3. MCP Proxy Architecture
+**Decision:** Single proxy managing multiple server connections via stdio
 
 **Why:**
-- Unified API for renderer (`mcp_client_tool_call`)
+- Unified API for renderer
 - Client caching reduces spawn overhead
 - Lazy connection model (connect on first tool call)
 
-**Implementation:** `src/mcp/proxy.ts` - 268 lines
+**Implementation:** `mcp-bridge.mjs` - Node.js proxy server
 
-### 3. stdio Transport for MCP
+### 4. stdio Transport for MCP
 **Decision:** Use stdio JSON-RPC instead of HTTP/SSE for local servers
 
 **Why:**
@@ -287,23 +326,15 @@ graph TD
 
 **Protocol:** JSON-RPC 2.0 over stdin/stdout
 
-### 4. Context Isolation
-**Decision:** Enable `contextIsolation: true` with preload script
-
-**Why:**
-- Security: renderer cannot access Node.js directly
-- Clean API boundary via `window.electronAPI`
-- Prevents renderer from spawning arbitrary processes
-
 ### 5. qwen-core Embedding
-**Decision:** Bundle qwen-core inside app.asar, not as external dependency
+**Decision:** Bundle qwen-core as external npm package, not inside app archive
 
 **Why:**
-- Single install (no separate npm install for user)
-- Version locked to app version
-- Path resolution via `process.resourcesPath`
+- Easy updates via npm
+- Version independent from app version
+- Standard Node.js module resolution
 
-**Location:** `resources/app.asar/qwen-core/src/index.ts`
+**Location:** `~/.config/qwen-studio/node_modules/qwen-core`
 
 ## Error Recovery: parent_id Flow
 
@@ -335,29 +366,47 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[npm install] --> B[postinstall:<br/>download-runtimes.js]
-    B --> C[resources/bun/<br/>resources/uv/]
+    A[npm install] --> B[postinstall:<br/>download MCP runtimes]
     
-    D[npm run build] --> E[tsc:<br/>src/ → out/]
-    E --> F[electron-builder]
-    F --> G[ASAR:<br/>out/ → app.asar]
-    G --> H[extraResources:<br/>qwen-core/, resources/]
-    H --> I[Linux RPM/Deb/AppImage]
+    C[npm run tauri:build] --> D[cargo build --release]
+    D --> E[Tauri Bundler]
+    E --> F[DEB Package]
+    E --> G[RPM Package]
+    E --> H[AppImage (optional)]
+    
+    F --> I[target/release/bundle/deb/]
+    G --> J[target/release/bundle/rpm/]
+    H --> K[target/release/bundle/appimage/]
     
     style B fill:#ffe0b2
-    style F fill:#c8e6c9
+    style E fill:#c8e6c9
     style I fill:#bbdefb
 ```
+
+**Build Commands:**
+```bash
+# Development (hot reload)
+npm run tauri:dev
+
+# Build all formats
+npm run tauri:build
+
+# Individual formats
+npm run tauri:build:deb    # Debian/Ubuntu
+npm run tauri:build:rpm    # Fedora/RHEL
+```
+
+**RPM Fix:** Uses `"compression": { "type": "none" }` to avoid `rpm-rs` gzip stall on large binaries.
 
 ## Configuration Storage
 
 | Config | Location | Format | Managed By |
 |--------|----------|--------|------------|
-| MCP Servers | `~/.config/qwen-studio/settings.json` | `{ mcpServers: {...} }` | IPC handlers |
+| MCP Servers | `~/.config/qwen-studio/settings.json` | `{ mcpServers: {...} }` | Tauri commands |
 | App Theme | Web app account settings | Server-side | chat.qwen.ai |
-| Language | `~/.config/qwen-studio/settings.json` | `{ app_language: "en" }` | IPC handlers |
+| Language | `~/.config/qwen-studio/settings.json` | `{ app_language: "en" }` | Tauri commands |
 | Conversation State | IndexedDB (LevelDB) | Binary (Leveldb) | chat.qwen.ai |
-| Skills | `~/.config/qwen-studio/skills/` | Markdown files | skills-manager.ts |
+| Skills | `~/.config/qwen-studio/skills/` | Markdown files | qwen-core |
 
 ## Security Boundaries
 
@@ -391,5 +440,5 @@ flowchart TB
 
 ---
 
-**Generated:** 2026-05-15  
-**Version:** qwen-studio v2.1.0
+**Generated:** 2026-05-20  
+**Version:** qwen-studio v2.2.0 (Tauri v2)

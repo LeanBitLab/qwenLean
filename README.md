@@ -7,32 +7,27 @@
 
 Open-source Qwen AI desktop client for Linux. Run Alibaba's Qwen models natively with full MCP (Model Context Protocol) support and automatic updates.
 
+**v2.2.0 — Migrated to Tauri v2 (Rust + WebKitGTK)**: ~6MB binary (was ~150MB Electron), better performance, native Linux integration.
+
 The official Qwen Studio app only supports Windows and macOS. This project brings the same desktop experience to Linux.
 
 ---
 
 ## Quick Install
 
-### Option 1: AppImage (recommended — works on every distro)
+### Option 1: Debian/Ubuntu (recommended)
 
 ```bash
-wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/Qwen-2.2.0-x86_64.AppImage
-chmod +x Qwen-2.2.0-x86_64.AppImage
-./Qwen-2.2.0-x86_64.AppImage
-```
-
-### Option 2: Debian/Ubuntu
-
-```bash
-wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio_2.2.0_amd64.deb
-sudo apt install ./qwen-studio_2.2.0_amd64.deb
+wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio_2.2.1_amd64.deb
+sudo apt install ./qwen-studio_2.2.1_amd64.deb
 qwen-studio
 ```
 
-### Option 3: Fedora/RHEL
+### Option 2: Fedora/RHEL
 
 ```bash
-sudo dnf install https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio-2.2.0.x86_64.rpm
+wget https://github.com/youssefvdel/qwen-studio/releases/latest/download/qwen-studio-2.2.1.x86_64.rpm
+sudo dnf install qwen-studio-2.2.1.x86_64.rpm
 qwen-studio
 ```
 
@@ -49,21 +44,22 @@ qwen-studio
 | System tray         | Minimize to tray, right-click menu, runs in background                               |
 | 12 languages        | zh-CN, en-US, zh-TW, ja-JP, ko-KR, ru-RU, de-DE, fr-FR, es-ES, it-IT, pt-PT, ar-BH   |
 | Theme support       | Light/dark mode with automatic system theme detection                                |
-| Auto updates        | In-app update notifications with one-click install (AppImage, DEB, RPM)              |
-| 3 package formats   | AppImage (universal), .deb (Debian/Ubuntu), .rpm (Fedora/RHEL)                       |
+| Auto updates        | In-app update notifications with one-click install (DEB, RPM)                        |
+| Zoom controls       | **Ctrl+Scroll**, **Ctrl+±**, **Ctrl+0** (50%-200% range)                             |
 | Deep linking        | `qwen://` protocol support for authentication and sharing                            |
 | Privacy first       | Sandboxed WebView, no telemetry, zero data collection                                |
+| Tauri v2            | Rust backend + WebKitGTK — ~6MB binary, native Linux performance                     |
 
 ---
 
 ## Architecture
 
-Built with **Tauri v2** (Rust + WebKitGTK), replacing the previous Electron version:
+Built with **Tauri v2** (Rust + WebKitGTK):
 
 ```mermaid
 graph TB
-    subgraph QwenStudio["Qwen Studio Application (Tauri v2)"]
-        Rust[Rust Backend<br/>lib.rs]
+    subgraph QwenStudio["Qwen Studio (Tauri v2)"]
+        Rust[Rust Backend<br/>lib.rs, window.rs, mcp.rs]
         WebView[WebKitGTK WebView<br/>chat.qwen.ai]
         Bridge[JS Bridge<br/>electron-bridge.js]
         MCP[MCP Bridge<br/>mcp-bridge.mjs]
@@ -90,9 +86,9 @@ graph TB
 
 | Module              | Purpose                                          |
 | ------------------- | ------------------------------------------------ |
-| `src/lib.rs`    | App bootstrap, WebView creation, update commands |
+| `src/lib.rs`    | App bootstrap, WebView, updates, zoom          |
 | `src/main.rs`   | Binary entry point                               |
-| `src/window.rs` | Window management, deep link handling            |
+| `src/window.rs` | Window management, deep links            |
 | `src/mcp.rs`    | MCP server management, tool calls                |
 | `src/dialogs.rs`| Native file picker, confirmation dialogs         |
 | `src/events.rs` | Event forwarding between Rust and WebView        |
@@ -229,12 +225,17 @@ Config location: `~/.config/qwen-studio/settings.json`
 ## Auto Updates
 
 The app checks for updates on startup and every 4 hours. When an update is available:
-- A banner appears at the top of the app
-- Click **View in Settings** to navigate to the Settings page
-- App restarts automatically after installation
+- A popup notification appears (top-right corner)
+- Click **View** to navigate to the Settings Updates tab
+- Download with progress tracking → Install → Restart
+
+**Settings Updates Tab:**
+- Manual "Check for Updates" button
+- Real-time download progress (MB counter)
+- Release notes viewer
+- One-click restart after install
 
 Supported install types:
-- **AppImage**: Uses Tauri updater plugin (download + replace + restart)
 - **DEB**: Downloads via curl → `pkexec dpkg -i` → restart
 - **RPM**: Downloads via curl → `pkexec rpm -Uvh` → restart
 
@@ -264,7 +265,7 @@ zh-CN, en-US, zh-TW, ja-JP, ko-KR, ru-RU, de-DE, fr-FR, es-ES, it-IT, pt-PT, ar-
 | -------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | WebKitGTK blank screen     | Known            | `WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1` (set automatically in package.json)                                                                                                                                                                                                                 |
 | Wayland compositors        | Partial          | `GDK_BACKEND=x11` (set automatically)                                                                                                                                                                                                                                                                                    |
-| Browser login redirect     | Open             | Login via the in-app window. If external browser opens, copy `qwen://open?token=xxx` URL and run `xdg-open "qwen://open?token=YOUR_TOKEN"` in terminal. Known limitation with AppImage protocol handlers on some desktop environments.                                                                                  |
+| Browser login redirect     | Open             | Login via the in-app window. If external browser opens, copy `qwen://open?token=xxx` URL and run `xdg-open "qwen://open?token=YOUR_TOKEN"` in terminal. Known limitation with protocol handlers on some desktop environments.                                                                                           |
 | MCP settings page network error | Expected    | Web app tries cloud backend. Local Tauri MCP handles everything. Do not fix.                                                                                                                                                                                                                                             |
 
 ---
@@ -322,7 +323,7 @@ MIT License. See [LICENSE](LICENSE).
 - Based on reverse engineering of the official Qwen Studio app (Windows/macOS)
 - Uses [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk) by Anthropic
 - Built with [Tauri v2](https://v2.tauri.app/) (Rust + WebKitGTK)
-- Previous Electron version archived
+- v2.2.0 migrates from Electron to Tauri for better performance and smaller binaries
 
 ---
 

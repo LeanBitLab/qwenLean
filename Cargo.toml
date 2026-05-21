@@ -1,6 +1,6 @@
 [package]
 name = "qwen-studio"
-version = "2.2.0"
+version = "2.2.1"
 description = "Open-source Qwen AI desktop client with MCP support"
 authors = ["youssefvdel"]
 license = "MIT"
@@ -25,6 +25,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-clipboard-manager = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"

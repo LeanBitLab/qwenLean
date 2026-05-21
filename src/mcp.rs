@@ -214,12 +214,12 @@ fn get_default_config() -> HashMap<String, McpServerConfig> {
         .unwrap_or_else(|| "/tmp".to_string());
     let projects_dir = format!("{}/Projects", home_dir);
 
-    // Auto-add qwen-core (28 tools + 3 prompts)
+    // Auto-add qwen-core (28 tools + 3 prompts) - runs from local ~/Projects/qwen-core
     config.insert(
         "qwen-core".to_string(),
         McpServerConfig {
             command: "npx".to_string(),
-            args: vec!["-y".to_string(), "@youssefvdel/qwen-core".to_string()],
+            args: vec!["-y".to_string(), "qwen-core".to_string()],
             transport_type: Some("stdio".to_string()),
             source: Some("official".to_string()),
             from_: Some("builtin".to_string()),

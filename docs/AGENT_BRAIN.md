@@ -1,8 +1,18 @@
 # 🧠 Qwen-Core Agent Brain Documentation
 
 > **Purpose**: Complete reference for autonomous agents working with qwen-core  
-> **Version**: 2.3.0 | **Last Updated**: 2026-05-19  
-> **For**: AI agents, developers, system integrators  
+> **Version**: 2.2.0 | **Last Updated**: 2026-05-20  
+> **For**: AI agents, developers, system integrators
+
+## 🦀 Tauri v2 Migration (v2.2.0)
+
+**App now uses Tauri v2 instead of Electron:**
+- **Rust backend** replaces Node.js main process
+- **WebKitGTK** replaces Chromium WebView
+- **Tauri commands** replace IPC (`window.__TAURI__.core.invoke()`)
+- **~6MB binary** (was ~150MB Electron)
+
+**Agent workflow unchanged:** MCP servers, tools, and skills work identically.  
 
 ---
 
@@ -30,24 +40,23 @@ flowchart LR
 
 ```
 ┌─────────────────────────────────────────┐
-│         qwen-studio (Electron)          │
+│         Qwen Studio (Tauri v2)          │
 │  ┌─────────────────────────────────┐   │
 │  │  Renderer: chat.qwen.ai WebView │   │
-│  │  Preload: window.electronAPI    │   │
+│  │  electron-bridge.js             │   │
 │  └────────────┬────────────────────┘   │
-│               │ IPC                    │
+│               │ Tauri Commands         │
 │  ┌────────────▼────────────┐           │
-│  │  Main Process (Node.js) │           │
-│  │  • MCP Proxy            │           │
-│  │  • Skills Manager       │           │
-│  │  • Runtime Resolver     │           │
+│  │  Rust Backend           │           │
+│  │  • lib.rs (Bootstrap)   │           │
+│  │  • mcp.rs (MCP State)   │           │
+│  │  • window.rs (Window)   │           │
 │  └────────────┬────────────┘           │
 │               │ stdio                  │
 └───────────────▼────────────────────────┘
         ┌─────────────────┐
         │  qwen-core MCP  │
         │  • 39 Tools     │
-        │  • 3 Prompts    │
         │  • Skills System│
         └─────────────────┘
 ```
@@ -57,10 +66,11 @@ flowchart LR
 | File | Purpose | Critical For |
 |------|---------|-------------|
 | `qwen-core/src/index.ts` | MCP server entry, tool registry | Understanding available tools |
-| `qwen-core/src/agent/AutonomousAgent.ts` | Build/test/fix cycles | Autonomous debugging |
 | `qwen-core/skills/*/SKILL.md` | Workflow templates | Loading specialized behaviors |
-| `src/main/mcp-config.ts` | Runtime path adaptation | Production deployment |
-| `src/main/skills-manager.ts` | Skill injection into chat | UI integration |
+| `src/lib.rs` | Tauri bootstrap, update commands | App lifecycle, updates |
+| `src/mcp.rs` | MCP server state management | MCP config sync |
+| `electron-bridge.js` | JS bridge for Tauri commands | Renderer → Rust communication |
+| `mcp-bridge.mjs` | MCP proxy server | stdio transport |
 
 ---
 
