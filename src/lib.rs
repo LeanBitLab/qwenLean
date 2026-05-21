@@ -87,7 +87,43 @@ pub fn run() {
             .decorations(true)
             .accept_first_mouse(false)
             .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 AliDesktop(QWENCHAT/2.2.3)")
-            .initialization_script(&combined_script);
+            .initialization_script(&combined_script)
+            .on_navigation(|url| {
+                // Allow all navigation within auth-related domains
+                let url_str = url.to_string();
+                let auth_domains = [
+                    "chat.qwen.ai",
+                    "accounts.qwen.ai",
+                    "account.qwen.ai",
+                    "login.qwen.ai",
+                    "auth.qwen.ai",
+                    "oauth.qwen.ai",
+                    "passport.alibaba.com",
+                    "login.alibaba.com",
+                    "signin.alibaba.com",
+                    "accounts.alibaba.com",
+                    "account.alibaba.com",
+                    "login.aliyun.com",
+                    "account.aliyun.com",
+                    "signin.aliyun.com",
+                ];
+                
+                let is_auth_domain = auth_domains.iter().any(|domain| url_str.contains(domain));
+                let is_auth_path = url_str.contains("/login") 
+                    || url_str.contains("/auth") 
+                    || url_str.contains("/oauth")
+                    || url_str.contains("/callback")
+                    || url_str.contains("/signin")
+                    || url_str.contains("/signup");
+                
+                // Allow navigation if it's auth-related or back to chat.qwen.ai
+                if is_auth_domain || is_auth_path || url_str.starts_with("https://chat.qwen.ai") {
+                    true
+                } else {
+                    // For non-auth external URLs, they'll be handled by open_external_link
+                    url_str.starts_with("https://") || url_str.starts_with("http://")
+                }
+            });
 
             let _main_window = if let Some(icon) = icon {
                 window_builder.icon(icon).unwrap().build()?

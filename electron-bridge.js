@@ -631,6 +631,53 @@
           console.log('[ElectronBridge] window.open() intercepted for auth URLs');
         })();
 
+        // === HANDLE OAUTH CALLBACK ===
+        // When we navigate the current window for auth (instead of opening a popup),
+        // the OAuth callback page can't use window.opener.postMessage() to send tokens back.
+        // We need to detect callback URLs and extract tokens from URL parameters.
+        (function handleOAuthCallback() {
+          var currentUrl = window.location.href;
+          var isCallback = /callback|oauth.*callback|auth.*callback/.test(currentUrl) ||
+            (currentUrl.includes('chat.qwen.ai') && (currentUrl.includes('token=') || currentUrl.includes('code=') || currentUrl.includes('sid=') || currentUrl.includes('ticket=')));
+
+          if (!isCallback) return;
+
+          console.log('[ElectronBridge] OAuth callback detected, extracting tokens...');
+
+          // Parse URL parameters
+          var urlParams = new URLSearchParams(window.location.search);
+          var token = urlParams.get('token') || urlParams.get('code') || urlParams.get('sid') || urlParams.get('ticket');
+
+          if (!token) {
+            console.warn('[ElectronBridge] No token found in callback URL');
+            return;
+          }
+
+          console.log('[ElectronBridge] Token extracted, length:', token.length);
+
+          // Store token in localStorage and cookies
+          try {
+            localStorage.setItem('token', token);
+            localStorage.setItem('sid', token);
+            localStorage.setItem('ticket', token);
+            localStorage.setItem('auth_token', token);
+            localStorage.setItem('qwen_auth_token', token);
+            sessionStorage.setItem('token', token);
+            sessionStorage.setItem('sid', token);
+
+            document.cookie = 'token=' + token + '; domain=.qwen.ai; path=/; max-age=2592000';
+            document.cookie = 'sid=' + token + '; domain=.qwen.ai; path=/; max-age=2592000';
+            document.cookie = 'ticket=' + token + '; domain=.qwen.ai; path=/; max-age=2592000';
+
+            console.log('[ElectronBridge] Token stored successfully');
+
+            // Redirect to main chat page
+            window.location.href = 'https://chat.qwen.ai';
+          } catch(e) {
+            console.error('[ElectronBridge] Failed to store token:', e);
+          }
+        })();
+
         // Main paste interceptor — runs in CAPTURE phase before any web app handler
         // Re-entrancy guard: prevents infinite loop when injectImageFile() dispatches
         // synthetic events that could re-trigger this handler
